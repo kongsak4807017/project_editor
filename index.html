@@ -976,55 +976,57 @@
         });
 
         async function handleInitialLoad() {
-            // เช็ค LocalStorage ก่อน (เผื่อเน็ตหลุด)
+            console.log('Checking for existing data...');
+            // เช็ค LocalStorage ก่อน
             const saved = localStorage.getItem('editorProjects');
-            if (saved) {
+            if (saved && JSON.parse(saved).length > 0) {
                 allProjects = JSON.parse(saved);
                 sourceProjects = JSON.parse(JSON.stringify(allProjects));
-                console.log('Loaded from LocalStorage:', allProjects.length);
+                console.log('Using data from LocalStorage:', allProjects.length);
                 updateUI();
                 hideLoading();
             } else {
-                // ถ้าไม่มีอะไรเลย ดึงจากไฟล์ Master JSON ทันที
+                // ถ้าไม่มีข้อมูลในเครื่องเลย ค่อยดึงจากไฟล์ Master
+                console.log('LocalStorage is empty, fetching Master JSON...');
                 await loadFromJSON();
             }
-        }
-
-        function updateUI() {
-            filteredProjects = [...allProjects];
-            const sections = getUniqueSections();
-            filterState.sections.clear();
-            sections.forEach(s => filterState.sections.add(s));
-            
-            updateStats();
-            renderFilters();
-            applyFilters();
         }
 
         // ============================================
         // LOAD MASTER DATA FROM JSON
         // ============================================
         async function loadFromJSON() {
-            showLoading('กำลังโหลดข้อมูลพื้นฐาน (projects_complete.json)...');
-            try {
-                const response = await fetch('projects_complete.json');
-                if (!response.ok) throw new Error('ไม่พบไฟล์ projects_complete.json');
-                
-                const data = await response.json();
-                if (Array.isArray(data) && data.length > 0) {
-                    allProjects = data;
-                    sourceProjects = JSON.parse(JSON.stringify(allProjects));
-                    
-                    updateUI();
-                    hideLoading();
-                    showNotification(`โหลดข้อมูลพื้นฐานสำเร็จ ${allProjects.length} โครงการ`, 'success');
-                } else {
-                    throw new Error('ข้อมูลในไฟล์ JSON ไม่ถูกต้อง');
+            showLoading('กำลังดึงข้อมูลจาก Server...');
+            // ลองดึงจากหลายๆ path ที่อาจเป็นไปได้บน GitHub Pages
+            const paths = ['./projects_complete.json', 'projects_complete.json'];
+            let success = false;
+
+            for (const path of paths) {
+                try {
+                    console.log('Attempting to fetch Master Data from:', path);
+                    const response = await fetch(path);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (Array.isArray(data) && data.length > 0) {
+                            allProjects = data;
+                            sourceProjects = JSON.parse(JSON.stringify(allProjects));
+                            updateUI();
+                            hideLoading();
+                            showNotification(`โหลดข้อมูลพื้นฐานสำเร็จ ${allProjects.length} โครงการ`, 'success');
+                            console.log('Successfully loaded Master Data from:', path);
+                            success = true;
+                            break;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Failed to load from ${path}:`, e);
                 }
-            } catch (error) {
-                console.error('Master Data Load Error:', error);
+            }
+
+            if (!success) {
                 hideLoading();
-                showNotification('ไม่สามารถโหลดข้อมูลพื้นฐานได้: ' + error.message, 'error');
+                console.error('Could not load Master JSON from any location.');
+                showNotification('ไม่สามารถโหลดไฟล์ projects_complete.json ได้ กรุณาตรวจสอบว่ามีไฟล์นี้อยู่ใน GitHub หรือไม่', 'error');
             }
         }
 
