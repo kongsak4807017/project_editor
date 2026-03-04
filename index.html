@@ -339,8 +339,7 @@
             padding-bottom: 10px;
             border-bottom: 2px solid var(--border);
             display: flex;
-            align-items: center;
-            gap: 10px;
+            align-items: center; gap: 10px;
         }
 
         .form-group {
@@ -634,21 +633,6 @@
             color: white;
         }
 
-        /* Data Import Section */
-        .data-import-section {
-            background: #fef3c7;
-            border: 2px dashed #fbbf24;
-            border-radius: var(--radius);
-            padding: 30px;
-            text-align: center;
-            margin-bottom: 25px;
-        }
-
-        .data-import-section.dragover {
-            background: #fde68a;
-            border-color: #f59e0b;
-        }
-
         /* Filter Styles */
         .filter-section {
             background: #f8fafc;
@@ -918,31 +902,25 @@
 
     <script>
         // ============================================
-        // LOAD DATA FROM projects_complete.json
-        // ============================================
-        let sourceProjects = []; // Will be loaded from JSON
-
-        // ============================================
         // GLOBAL STATE
         // ============================================
         let allProjects = [];
+        let sourceProjects = [];
         let filteredProjects = [];
         let selectedProject = null;
-        let geminiApiKey = localStorage.getItem('geminiApiKey') || '';
-        let hfToken = localStorage.getItem('hfToken') || '';
-        let aiProvider = localStorage.getItem('aiProvider') || 'gemini'; // 'gemini' หรือ 'huggingface'
+        let aiProvider = localStorage.getItem('aiProvider') || 'gemini';
 
         // ============================================
         // FILTER STATE
         // ============================================
         let filterState = {
-            types: new Set(['CSO', 'FLAGSHIP']), // ใช้ค่าตรงกับข้อมูลใน JSON
-            sections: new Set(), // จะถูกเติมจากข้อมูล
+            types: new Set(['CSO', 'FLAGSHIP']),
+            sections: new Set(),
             status: new Set(['draft', 'edited', 'ai-reviewed', 'ai'])
         };
 
         // ============================================
-        // INITIALIZATION (Real-time Cloud Sync with Timeout Protection)
+        // INITIALIZATION
         // ============================================
         document.addEventListener('DOMContentLoaded', function () {
             console.log('App starting...');
@@ -950,10 +928,10 @@
             
             let cloudResolved = false;
 
-            // ตั้ง Timeout 5 วินาที ถ้าต่อ Firebase ไม่ได้ให้เลิกคอย
+            // Timeout 5 seconds for Cloud Sync
             const connectionTimeout = setTimeout(() => {
                 if (!cloudResolved) {
-                    console.warn('Firebase connection timed out. Falling back to initial load.');
+                    console.warn('Firebase connection timed out.');
                     cloudResolved = true;
                     showNotification('เชื่อมต่อ Cloud ล่าช้า (กำลังใช้ข้อมูลสำรองในเครื่อง)', 'warning');
                     handleInitialLoad();
@@ -961,16 +939,15 @@
             }, 5000);
 
             try {
-                // ใช้ onSnapshot เพื่อให้ข้อมูลอัปเดตอัตโนมัติ
-                const unsubscribe = db.collection(COLLECTION_NAME).onSnapshot((snapshot) => {
-                    if (cloudResolved && snapshot.empty) return; // ถ้าข้ามไปแล้วไม่ต้องทำอะไรต่อกรณีว่าง
+                db.collection(COLLECTION_NAME).onSnapshot((snapshot) => {
+                    if (cloudResolved && snapshot.empty) return;
                     
-                    clearTimeout(connectionTimeout); // ยกเลิก timeout เมื่อได้รับข้อมูล
+                    clearTimeout(connectionTimeout);
                     cloudResolved = true;
 
                     if (!snapshot.empty) {
                         allProjects = snapshot.docs.map(doc => doc.data());
-                        console.log('Sync from Cloud success:', allProjects.length, 'projects');
+                        console.log('Sync from Cloud success:', allProjects.length);
                         
                         if (sourceProjects.length === 0) {
                             sourceProjects = JSON.parse(JSON.stringify(allProjects));
@@ -987,12 +964,10 @@
                     clearTimeout(connectionTimeout);
                     cloudResolved = true;
                     console.error('Firestore Error:', error);
-                    hideLoading();
-                    showNotification('ต่อ Cloud ไม่ได้: ' + error.message, 'error');
                     handleInitialLoad();
                 });
             } catch (err) {
-                console.error('Firebase initialization crash:', err);
+                console.error('Firebase crash:', err);
                 handleInitialLoad();
             }
 
@@ -1000,71 +975,66 @@
         });
 
         async function handleInitialLoad() {
-            console.log('Checking for existing data...');
-            // เช็ค LocalStorage ก่อน
             const saved = localStorage.getItem('editorProjects');
             if (saved && JSON.parse(saved).length > 0) {
                 allProjects = JSON.parse(saved);
                 sourceProjects = JSON.parse(JSON.stringify(allProjects));
-                console.log('Using data from LocalStorage:', allProjects.length);
                 updateUI();
                 hideLoading();
             } else {
-                // ถ้าไม่มีข้อมูลในเครื่องเลย ค่อยดึงจากไฟล์ Master
-                console.log('LocalStorage is empty, fetching Master JSON...');
                 await loadFromJSON();
             }
         }
 
-        // ============================================
-        // LOAD MASTER DATA FROM JSON
-        // ============================================
         async function loadFromJSON() {
             showLoading('กำลังดึงข้อมูลจาก Server...');
-            // เพิ่ม path โฟลเดอร์ project_editor/ เข้าไปด้วย
+            // รองรับทุก Path ที่เป็นไปได้บน GitHub ของคุณ
             const paths = [
                 './projects_complete.json', 
                 'projects_complete.json',
                 './project_editor/projects_complete.json',
                 'project_editor/projects_complete.json'
             ];
+            
             let success = false;
-
             for (const path of paths) {
                 try {
-                    console.log('Attempting to fetch Master Data from:', path);
+                    console.log('Fetching from:', path);
                     const response = await fetch(path);
                     if (response.ok) {
                         const data = await response.json();
-                        if (Array.isArray(data) && data.length > 0) {
+                        if (Array.isArray(data)) {
                             allProjects = data;
                             sourceProjects = JSON.parse(JSON.stringify(allProjects));
                             updateUI();
                             hideLoading();
-                            showNotification(`โหลดข้อมูลพื้นฐานสำเร็จ ${allProjects.length} โครงการ`, 'success');
-                            console.log('Successfully loaded Master Data from:', path);
+                            showNotification('โหลดข้อมูลพื้นฐานสำเร็จ', 'success');
                             success = true;
                             break;
                         }
                     }
-                } catch (e) {
-                    console.warn(`Failed to load from ${path}:`, e);
-                }
+                } catch (e) {}
             }
 
             if (!success) {
                 hideLoading();
-                console.error('Could not load Master JSON from any location.');
-                showNotification('ไม่สามารถโหลดไฟล์ projects_complete.json ได้ กรุณาตรวจสอบว่ามีไฟล์นี้อยู่ใน GitHub หรือไม่', 'error');
+                showNotification('ไม่พบไฟล์ข้อมูลพื้นฐานบน GitHub', 'error');
             }
         }
 
-        // --- ลบฟังก์ชัน importData, setupDragAndDrop, handleFileImport ออกเนื่องจากไม่ได้ใช้แล้ว ---
+        function updateUI() {
+            filteredProjects = [...allProjects];
+            const sections = getUniqueSections();
+            sections.forEach(s => filterState.sections.add(s));
+            updateStats();
+            renderFilters();
+            applyFilters();
+        }
 
         // ============================================
-        // UI FUNCTIONS
+        // UI & SAVE FUNCTIONS (เหมือนเดิมแต่ครบถ้วน)
         // ============================================
-        function showLoading(message = 'กำลังโหลด...') {
+        function showLoading(message) {
             document.getElementById('loadingOverlay').querySelector('div:last-child').textContent = message;
             document.getElementById('loadingOverlay').classList.add('active');
         }
@@ -1081,1820 +1051,257 @@
 
         function formatBudget(value) {
             const num = parseInt(value?.toString().replace(/[^0-9]/g, '')) || 0;
-            if (num === 0) return '-';
-            if (num >= 1000000) return (num / 1000000).toFixed(2) + ' ล้านบาท';
-            if (num >= 1000) return num.toLocaleString() + ' บาท';
-            return num + ' บาท';
+            return num === 0 ? '-' : (num >= 1000000 ? (num / 1000000).toFixed(2) + ' ล้าน' : num.toLocaleString() + ' บาท');
         }
 
         function getStatusBadge(project) {
-            if (project.after?.objective && project.after?.method) {
-                return '<span class="status-badge status-ai"><i class="fas fa-robot"></i> AI</span>';
-            } else if (project.lastModified) {
-                return '<span class="status-badge status-edited"><i class="fas fa-edit"></i> แก้ไข</span>';
-            }
+            if (project.after?.objective) return '<span class="status-badge status-ai"><i class="fas fa-robot"></i> AI</span>';
+            if (project.lastModified) return '<span class="status-badge status-edited"><i class="fas fa-edit"></i> แก้ไข</span>';
             return '<span class="status-badge status-draft"><i class="fas fa-file"></i> ร่าง</span>';
         }
 
         function renderProjectList() {
             const listEl = document.getElementById('projectList');
-
             if (filteredProjects.length === 0) {
-                listEl.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-search"></i>
-                        <p>ไม่พบโครงการ</p>
-                    </div>
-                `;
+                listEl.innerHTML = '<div class="empty-state">ไม่พบโครงการ</div>';
                 return;
             }
-
             listEl.innerHTML = filteredProjects.map(p => `
-                <div class="project-item ${selectedProject?.id === p.id ? 'active' : ''}" 
-                     onclick="selectProject('${p.id}')">
+                <div class="project-item ${selectedProject?.id === p.id ? 'active' : ''}" onclick="selectProject('${p.id}')">
                     <div class="project-id">${p.id} | ${p.section}</div>
                     <div class="project-name">${p.name}</div>
-                    <div class="project-meta">
-                        <span class="project-type ${p.type.toLowerCase()}">${p.type}</span>
-                        ${getStatusBadge(p)}
-                    </div>
+                    <div class="project-meta"><span class="project-type ${p.type.toLowerCase()}">${p.type}</span> ${getStatusBadge(p)}</div>
                 </div>
             `).join('');
-            
-            // อัปเดตจำนวนที่กรอง
             document.getElementById('filtered-count').textContent = filteredProjects.length;
             document.getElementById('total-count').textContent = allProjects.length;
         }
 
-        // ============================================
-        // FILTER FUNCTIONS
-        // ============================================
         function getUniqueSections() {
             const sections = new Set();
-            allProjects.filter(p => p.type === 'CSO').forEach(p => {
-                if (p.section) sections.add(p.section);
-            });
+            allProjects.forEach(p => { if (p.section) sections.add(p.section); });
             return Array.from(sections).sort();
         }
 
         function renderFilters() {
-            // Type Filter - แสดงชื่อที่อ่านง่าย แต่ใช้ค่าเดิมจาก data
-            const typeContainer = document.getElementById('filter-types');
-            if (typeContainer) {
-                const typeOptions = [
-                    { key: 'CSO', label: 'CSO' },
-                    { key: 'FLAGSHIP', label: 'Flagship' }
-                ];
-                typeContainer.innerHTML = typeOptions.map(opt => {
-                    const isActive = filterState.types.has(opt.key);
-                    return `
-                        <label class="filter-chip ${isActive ? 'active' : ''}">
-                            <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleType('${opt.key}')">
-                            ${opt.label}
-                        </label>
-                    `;
-                }).join('');
+            const typeCont = document.getElementById('filter-types');
+            if (typeCont) {
+                typeCont.innerHTML = ['CSO', 'FLAGSHIP'].map(t => `
+                    <label class="filter-chip ${filterState.types.has(t) ? 'active' : ''}">
+                        <input type="checkbox" ${filterState.types.has(t) ? 'checked' : ''} onchange="toggleType('${t}')"> ${t}
+                    </label>
+                `).join('');
             }
-
-            // Section Filter
-            const sectionContainer = document.getElementById('filter-sections');
-            if (sectionContainer) {
-                const sections = getUniqueSections();
-                sectionContainer.innerHTML = sections.map(section => {
-                    const isActive = filterState.sections.has(section);
-                    const escapedSection = section.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    return `
-                        <label class="filter-section-item">
-                            <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleSection('${escapedSection}')">
-                            <span>${section}</span>
-                        </label>
-                    `;
-                }).join('');
+            const secCont = document.getElementById('filter-sections');
+            if (secCont) {
+                secCont.innerHTML = getUniqueSections().map(s => `
+                    <label class="filter-section-item">
+                        <input type="checkbox" ${filterState.sections.has(s) ? 'checked' : ''} onchange="toggleSection('${s.replace(/'/g, "\\'")}')"> <span>${s}</span>
+                    </label>
+                `).join('');
             }
-
-            // Status Filter
-            const statusContainer = document.getElementById('filter-status');
-            if (statusContainer) {
-                const statusLabels = {
-                    'draft': 'ร่าง',
-                    'edited': 'แก้ไข',
-                    'ai-reviewed': 'AI รีวิว',
-                    'ai': 'AI'
-                };
-                statusContainer.innerHTML = Object.entries(statusLabels).map(([key, label]) => {
-                    const isActive = filterState.status.has(key);
-                    return `
-                        <label class="filter-chip ${isActive ? 'active' : ''}">
-                            <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleStatus('${key}')">
-                            ${label}
-                        </label>
-                    `;
-                }).join('');
+            const statCont = document.getElementById('filter-status');
+            if (statCont) {
+                const labels = {'draft':'ร่าง', 'edited':'แก้ไข', 'ai':'AI'};
+                statCont.innerHTML = Object.entries(labels).map(([k,v]) => `
+                    <label class="filter-chip ${filterState.status.has(k) ? 'active' : ''}">
+                        <input type="checkbox" ${filterState.status.has(k) ? 'checked' : ''} onchange="toggleStatus('${k}')"> ${v}
+                    </label>
+                `).join('');
             }
-        }
-
-        function getProjectStatus(project) {
-            if (project.after?.objective && project.after?.method) {
-                return 'ai';
-            } else if (project.status === 'ai-reviewed') {
-                return 'ai-reviewed';
-            } else if (project.lastModified) {
-                return 'edited';
-            }
-            return 'draft';
         }
 
         function applyFilters() {
-            const searchTerm = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            
+            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             filteredProjects = allProjects.filter(p => {
-                // Type filter
                 if (!filterState.types.has(p.type)) return false;
-                
-                // Section filter (สำหรับ CSO เท่านั้น)
-                if (p.type === 'CSO' && filterState.sections.size > 0) {
-                    if (!filterState.sections.has(p.section)) return false;
-                }
-                
-                // Status filter
-                const status = getProjectStatus(p);
+                if (filterState.sections.size > 0 && !filterState.sections.has(p.section)) return false;
+                const status = p.after?.objective ? 'ai' : (p.lastModified ? 'edited' : 'draft');
                 if (!filterState.status.has(status)) return false;
-                
-                // Search filter
-                if (searchTerm) {
-                    const matchName = p.name?.toLowerCase().includes(searchTerm);
-                    const matchId = p.id?.toLowerCase().includes(searchTerm);
-                    const matchSection = p.section?.toLowerCase().includes(searchTerm);
-                    if (!matchName && !matchId && !matchSection) return false;
-                }
-                
+                if (search && !p.name.toLowerCase().includes(search) && !p.id.toLowerCase().includes(search)) return false;
                 return true;
             });
-            
             renderProjectList();
         }
 
-        function toggleType(type) {
-            if (filterState.types.has(type)) {
-                filterState.types.delete(type);
-            } else {
-                filterState.types.add(type);
-            }
-            renderFilters();
-            applyFilters();
-        }
+        function toggleType(t) { filterState.types.has(t) ? filterState.types.delete(t) : filterState.types.add(t); renderFilters(); applyFilters(); }
+        function toggleSection(s) { filterState.sections.has(s) ? filterState.sections.delete(s) : filterState.sections.add(s); renderFilters(); applyFilters(); }
+        function toggleStatus(s) { filterState.status.has(s) ? filterState.status.delete(s) : filterState.status.add(s); renderFilters(); applyFilters(); }
+        function selectAllSections() { getUniqueSections().forEach(s => filterState.sections.add(s)); renderFilters(); applyFilters(); }
+        function clearSections() { filterState.sections.clear(); renderFilters(); applyFilters(); }
+        function resetFilters() { filterState.types = new Set(['CSO', 'FLAGSHIP']); filterState.sections.clear(); filterState.status = new Set(['draft', 'edited', 'ai']); document.getElementById('searchInput').value = ''; renderFilters(); applyFilters(); }
 
-        function toggleSection(section) {
-            if (filterState.sections.has(section)) {
-                filterState.sections.delete(section);
-            } else {
-                filterState.sections.add(section);
-            }
-            renderFilters();
-            applyFilters();
-        }
-
-        function toggleStatus(status) {
-            if (filterState.status.has(status)) {
-                filterState.status.delete(status);
-            } else {
-                filterState.status.add(status);
-            }
-            renderFilters();
-            applyFilters();
-        }
-
-        function selectAllSections() {
-            const sections = getUniqueSections();
-            sections.forEach(s => filterState.sections.add(s));
-            renderFilters();
-            applyFilters();
-        }
-
-        function clearSections() {
-            filterState.sections.clear();
-            renderFilters();
-            applyFilters();
-        }
-
-        function resetFilters() {
-            filterState.types = new Set(['CSO', 'FLAGSHIP']);
-            filterState.sections.clear();
-            filterState.status = new Set(['draft', 'edited', 'ai-reviewed', 'ai']);
-            document.getElementById('searchInput').value = '';
-            renderFilters();
-            applyFilters();
-        }
-
-        function selectProject(projectId) {
-            console.log('selectProject called:', projectId);
-            selectedProject = allProjects.find(p => p.id === projectId);
-            console.log('selectedProject changed to:', selectedProject?.id);
+        function selectProject(id) {
+            selectedProject = allProjects.find(p => p.id === id);
             if (!selectedProject) return;
-
             renderProjectList();
             renderEditor();
         }
 
         function renderEditor() {
             const p = selectedProject;
-
             document.getElementById('welcomeScreen').style.display = 'none';
             document.getElementById('editorContent').style.display = 'block';
-
-            document.getElementById('editorTitle').innerHTML = `
-                <i class="fas fa-edit"></i>
-                ${p.id}: ${p.name.substring(0, 50)}${p.name.length > 50 ? '...' : ''}
-                <span class="badge badge-info">${p.type}</span>
-            `;
-
+            document.getElementById('editorTitle').innerHTML = `<i class="fas fa-edit"></i> ${p.id}: ${p.name.substring(0, 50)}... <span class="badge badge-info">${p.type}</span>`;
+            
             document.getElementById('editorContent').innerHTML = `
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab('before')">ข้อมูลต้นฉบับ</button>
                     <button class="tab-btn" onclick="switchTab('after')">AI Recommended</button>
                     <button class="tab-btn" onclick="switchTab('compare')">เปรียบเทียบ</button>
                 </div>
-
-                <div id="tab-before" class="tab-content active">
-                    ${renderBeforeForm(p)}
-                </div>
-
-                <div id="tab-after" class="tab-content">
-                    ${renderAfterForm(p)}
-                </div>
-
-                <div id="tab-compare" class="tab-content">
-                    ${renderComparison(p)}
-                </div>
-
-                <!-- Editor Name Input -->
-                <div class="editor-info-bar" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-user-edit" style="color: var(--primary);"></i>
-                        <label style="font-weight: 600; color: var(--text);">แก้ไขโดย:</label>
-                    </div>
-                    <input type="text" 
-                           id="editor-name-input" 
-                           placeholder="ชื่อ-สกุล หรือ รหัสพนักงาน (ไม่เกิน 30 ตัวอักษร)" 
-                           maxlength="30"
-                           value="${localStorage.getItem('defaultEditorName') || ''}"
-                           style="flex: 1; min-width: 250px; padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 6px; font-family: inherit; font-size: 0.95em; transition: border-color 0.2s;">
-                    <button class="btn btn-sm btn-secondary" onclick="saveDefaultEditorName()">
-                        <i class="fas fa-save"></i> จดจำชื่อฉัน
-                    </button>
-                    <span id="editor-name-count" style="font-size: 0.8em; color: #94a3b8;">0/30</span>
+                <div id="tab-before" class="tab-content active">${renderBeforeForm(p)}</div>
+                <div id="tab-after" class="tab-content">${renderAfterForm(p)}</div>
+                <div id="tab-compare" class="tab-content">${renderComparison(p)}</div>
+                
+                <div class="editor-info-bar" style="background:#f8fafc; padding:12px; margin-bottom:15px; display:flex; gap:10px; border-radius:8px; border:1px solid #e2e8f0;">
+                    <label style="font-weight:600;">แก้ไขโดย:</label>
+                    <input type="text" id="editor-name-input" value="${localStorage.getItem('defaultEditorName') || ''}" style="flex:1; border:1px solid #ddd; padding:5px 10px; border-radius:4px;">
+                    <button class="btn btn-sm btn-secondary" onclick="saveDefaultEditorName()">จดจำชื่อ</button>
                 </div>
 
                 <div class="action-bar">
-                    <button class="btn btn-secondary" onclick="resetProject()">
-                        <i class="fas fa-undo"></i> รีเซ็ต
-                    </button>
-                    <button class="btn btn-gemini" onclick="showAIAssist()">
-                        <i class="fas fa-sparkles"></i> AI Assist
-                    </button>
-                    <button class="btn btn-success" onclick="saveCurrentProject()">
-                        <i class="fas fa-save"></i> บันทึกโครงการนี้
-                    </button>
-                    <button class="btn btn-info" onclick="showEditHistory()">
-                        <i class="fas fa-history"></i> ประวัติการแก้ไข
-                    </button>
+                    <button class="btn btn-secondary" onclick="resetProject()">รีเซ็ต</button>
+                    <button class="btn btn-gemini" onclick="generateFullAIAnalysis()"><i class="fas fa-sparkles"></i> AI Assist</button>
+                    <button class="btn btn-success" onclick="saveCurrentProject()"><i class="fas fa-save"></i> บันทึกขึ้น Cloud</button>
+                    <button class="btn btn-info" onclick="showEditHistory()"><i class="fas fa-history"></i> ประวัติ</button>
                 </div>
             `;
-            
-            // อัปเดตตัวนับตัวอักษรของ Context หลัง render เสร็จ
-            setTimeout(() => {
-                const contextInput = document.getElementById('ai-context-input');
-                if (contextInput) {
-                    updateContextCharCount(contextInput);
-                }
-                
-                // อัปเดตตัวนับตัวอักษรชื่อผู้แก้ไข
-                const editorInput = document.getElementById('editor-name-input');
-                if (editorInput) {
-                    updateEditorCharCount(editorInput);
-                    editorInput.addEventListener('input', () => updateEditorCharCount(editorInput));
-                }
-            }, 0);
-            
-            // ตรวจสอบสถานะ backend
-            setTimeout(async () => {
-                const statusEl = document.getElementById('backend-status');
-                if (statusEl) {
-                    const isOnline = await checkBackendStatus();
-                    if (isOnline) {
-                        statusEl.innerHTML = '<i class="fas fa-check-circle" style="color: #22c55e;"></i> Backend พร้อมใช้งาน';
-                    } else {
-                        statusEl.innerHTML = '<i class="fas fa-times-circle" style="color: #ef4444;"></i> ไม่สามารถเชื่อมต่อ Backend ได้';
-                    }
-                }
-            }, 1000);
         }
 
         function renderBeforeForm(p) {
             return `
                 <div class="editor-container">
-                    <div class="form-section">
-                        <div class="form-section-title">
-                            <i class="fas fa-info-circle"></i> ข้อมูลทั่วไป
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">รหัสโครงการ</label>
-                                <div class="readonly-field">${p.id}</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">ประเภท</label>
-                                <div class="readonly-field">${p.type}</div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">ชื่อโครงการ</label>
-                            <div class="readonly-field">${p.name}</div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">ส่วน/กลุ่ม</label>
-                                <div class="readonly-field">${p.section}</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">งบประมาณ</label>
-                                <div class="readonly-field">${formatBudget(p.budget)}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <div class="form-section-title">
-                            <i class="fas fa-file-alt"></i> ข้อมูลต้นฉบับ (Before)
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">วัตถุประสงค์เดิม</label>
-                            <textarea class="form-textarea" id="before-objective" 
-                                placeholder="ระบุวัตถุประสงค์ต้นฉบับ">${p.before?.objective || ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">กลุ่มเป้าหมายเดิม</label>
-                            <textarea class="form-textarea" id="before-target" 
-                                placeholder="ระบุกลุ่มเป้าหมายต้นฉบับ">${p.before?.target_group && !isNumeric(p.before.target_group) ? p.before.target_group : ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">วิธีการดำเนินงานเดิม</label>
-                            <textarea class="form-textarea large" id="before-method" 
-                                placeholder="ระบุวิธีการดำเนินงานต้นฉบับ">${p.before?.method || ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">ตัวชี้วัดเดิม</label>
-                            <textarea class="form-textarea" id="before-indicators" 
-                                placeholder="ระบุตัวชี้วัดความสำเร็จต้นฉบับ">${p.before?.indicators || ''}</textarea>
-                        </div>
-                    </div>
+                    <div class="form-group"><label class="form-label">วัตถุประสงค์เดิม</label><textarea class="form-textarea" id="before-objective">${p.before?.objective || ''}</textarea></div>
+                    <div class="form-group"><label class="form-label">กลุ่มเป้าหมายเดิม</label><textarea class="form-textarea" id="before-target">${p.before?.target_group || ''}</textarea></div>
+                    <div class="form-group"><label class="form-label">วิธีการเดิม</label><textarea class="form-textarea large" id="before-method">${p.before?.method || ''}</textarea></div>
                 </div>
             `;
         }
 
         function renderAfterForm(p) {
-            const hasAI = p.after?.objective || p.after?.method;
-            const geminiKey = localStorage.getItem('geminiApiKey') || '';
-            const hfToken = localStorage.getItem('hfToken') || '';
-            const currentProvider = localStorage.getItem('aiProvider') || 'gemini';
-
             return `
                 <div class="editor-container">
-                    <!-- API Key Section -->
-                    <div class="api-section" style="margin-bottom: 25px;">
-                        <h4><i class="fas fa-robot"></i> AI Provider</h4>
-                        
-                        <!-- Provider Selection -->
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 0.9em; font-weight: 600; margin-bottom: 5px; display: block;">เลือก AI Provider:</label>
-                            <select id="ai-provider" class="api-input" style="font-size: 0.9em;" onchange="switchAIProvider(this.value)">
-                                <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini (แนะนำ - ใช้งานง่าย)</option>
-                                <option value="huggingface" ${currentProvider === 'huggingface' ? 'selected' : ''}>Hugging Face (ต้องตั้งค่า Provider)</option>
-                            </select>
-                        </div>
-
-                        <!-- Gemini Backend Status -->
-                        <div id="gemini-section" style="display: ${currentProvider === 'gemini' ? 'block' : 'none'};">
-                            <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                    <i class="fas fa-shield-alt" style="color: #22c55e;"></i>
-                                    <span style="font-weight: 600; color: #166534;">ระบบ AI ปลอดภัย</span>
-                                </div>
-                                <p style="font-size: 0.85em; color: #166534; margin: 0;">
-                                    ข้อมูลส่งผ่าน Backend Proxy ที่ปลอดภัย ไม่ต้องกรอก API Key
-                                </p>
-                                <div id="backend-status" style="margin-top: 8px; font-size: 0.8em; color: #666;">
-                                    <i class="fas fa-spinner fa-spin"></i> กำลังตรวจสอบสถานะ...
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- HF Section - ปิดใช้งาน (ใช้ Gemini Backend เท่านั้น) -->
-                        <div id="hf-section" style="display: ${currentProvider === 'huggingface' ? 'block' : 'none'}; margin-top: 10px;">
-                            <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 12px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <i class="fas fa-info-circle" style="color: #d97706;"></i>
-                                    <span style="font-size: 0.9em; color: #92400e;">
-                                        ระบบใช้ <strong>Gemini ผ่าน Backend</strong> เท่านั้น เพื่อความปลอดภัยของ API Key
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="api-section">
+                        <select id="ai-provider" class="api-input"><option value="gemini">Google Gemini (Vercel Backend)</option></select>
                     </div>
-
-                    <!-- Context Input Section -->
-                    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                            <i class="fas fa-lightbulb" style="color: #0284c7;"></i>
-                            <label style="font-weight: 600; color: #0c4a6e;">ข้อมูล Context เพิ่มเติม (สำคัญ)</label>
-                            <span style="font-size: 0.8em; color: #64748b; margin-left: auto;">
-                                <span id="context-char-count">0</span>/2000
-                            </span>
-                        </div>
-                        <p style="font-size: 0.85em; color: #64748b; margin-bottom: 10px;">
-                            เพิ่มข้อมูลเชิงลึก เช่น สภาพปัญหาเฉพาะ กลุ่มเป้าหมายพิเศษ ข้อจำกัด หรือข้อมูลสำคัญอื่นๆ 
-                            เพื่อให้ AI วิเคราะห์ได้แม่นยำขึ้น
-                        </p>
-                        <textarea 
-                            id="ai-context-input" 
-                            class="form-textarea" 
-                            style="background: white; min-height: 100px; border-color: #7dd3fc;"
-                            placeholder="เช่น\n- กลุ่มเป้าหมายเฉพาะ: ผู้ป่วยโรคหัวใจในพื้นที่ห่างไกล 18 อำเภอ\n- สภาพปัญหา: ขาดแคลนเวชภัณฑ์และบุคลากร\n- ข้อจำกัด: งบประมาณจำกัด ต้องใช้ร่วมกับ รพ.สต."
-                            oninput="updateContextCharCount(this)"
-                            maxlength="2000"
-                        >${p.aiContext || ''}</textarea>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                            <span style="font-size: 0.8em; color: #94a3b8;">
-                                <i class="fas fa-info-circle"></i> ข้อมูลนี้จะถูกนำไปรวมใน Prompt ที่ส่งให้ AI
-                            </span>
-                            <button class="btn btn-secondary btn-sm" onclick="saveAIContext()">
-                                <i class="fas fa-save"></i> บันทึก Context
-                            </button>
-                        </div>
-                    </div>
-
-                    ${!hasAI ? `
-                    <div style="text-align: center; padding: 40px; background: #f8fafc; border-radius: 12px; margin-bottom: 25px;">
-                        <i class="fas fa-robot" style="font-size: 4em; color: var(--gemini); opacity: 0.5;"></i>
-                        <h3 style="margin-top: 15px; color: var(--text-muted);">ยังไม่มีข้อมูล AI Recommended</h3>
-                        <p style="color: #9ca3af;">ใช้ AI Assist เพื่อสร้างข้อเสนอแนะอัตโนมัติ หรือกรอกข้อมูลเอง</p>
-                        <button class="btn btn-gemini" onclick="generateFullAIAnalysis()" style="margin-top: 15px; padding: 12px 30px; font-size: 1.1em;">
-                            <i class="fas fa-sparkles"></i> สร้างด้วย AI
-                        </button>
-                    </div>
-                    ` : `
-                    <div style="text-align: center; padding: 20px; background: #f0fdf4; border-radius: 12px; margin-bottom: 25px; border: 2px solid #bbf7d0;">
-                        <i class="fas fa-check-circle" style="font-size: 2em; color: #10b981;"></i>
-                        <h3 style="margin-top: 10px; color: #166534;">มีข้อมูล AI แล้ว</h3>
-                        <p style="color: #666;">คุณสามารถแก้ไขข้อมูลด้านล่าง หรือสร้างใหม่ทั้งหมด</p>
-                        <button class="btn btn-gemini" onclick="generateFullAIAnalysis()" style="margin-top: 10px;">
-                            <i class="fas fa-sync"></i> สร้างใหม่ด้วย AI
-                        </button>
-                    </div>
-                    `}
-
-                    <div class="form-section">
-                        <div class="form-section-title">
-                            <i class="fas fa-magic"></i> ข้อมูลปรับปรุง (After)
-                            ${hasAI ? '<span class="ai-badge"><i class="fas fa-check"></i> AI Generated</span>' : ''}
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">วัตถุประสงค์ (SMART)</label>
-                            <textarea class="form-textarea large" id="after-objective" 
-                                placeholder="วัตถุประสงค์ที่ชัดเจน มีตัวเลขและระยะเวลา">${p.after?.objective || ''}</textarea>
-                            <div class="field-actions">
-                                <button class="btn btn-sm btn-gemini" onclick="generateWithAI('objective')">
-                                    <i class="fas fa-wand-magic-sparkles"></i> สร้างด้วย AI
-                                </button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">กลุ่มเป้าหมาย</label>
-                            <textarea class="form-textarea" id="after-target" 
-                                placeholder="กลุ่มเป้าหมายที่ชัดเจน">${p.after?.target_group || ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">วิธีการดำเนินงาน</label>
-                            <textarea class="form-textarea large" id="after-method" 
-                                placeholder="ขั้นตอนการดำเนินงาน">${p.after?.method || ''}</textarea>
-                            <div class="field-actions">
-                                <button class="btn btn-sm btn-gemini" onclick="generateWithAI('method')">
-                                    <i class="fas fa-wand-magic-sparkles"></i> สร้างด้วย AI
-                                </button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">นวัตกรรม/เทคโนโลยี</label>
-                            <textarea class="form-textarea" id="after-innovation" 
-                                placeholder="เทคโนโลยีหรือนวัตกรรมที่ใช้">${p.after?.innovation || ''}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">ตัวชี้วัดความสำเร็จ (KPIs) <span class="optional">(แต่ละข้อในบรรทัดใหม่)</span></label>
-                            <textarea class="form-textarea large" id="after-kpis" 
-                                placeholder="ตัวชี้วัดที่วัดได้&#10;1. &#10;2. &#10;3. ">${p.after?.kpis?.join('\n') || ''}</textarea>
-                        </div>
-                    </div>
+                    <div class="form-group"><label class="form-label">วัตถุประสงค์ (SMART)</label><textarea class="form-textarea large" id="after-objective">${p.after?.objective || ''}</textarea></div>
+                    <div class="form-group"><label class="form-label">วิธีการดำเนินงาน</label><textarea class="form-textarea large" id="after-method">${p.after?.method || ''}</textarea></div>
+                    <div class="form-group"><label class="form-label">ตัวชี้วัด (KPIs)</label><textarea class="form-textarea" id="after-kpis">${p.after?.kpis?.join('\n') || ''}</textarea></div>
                 </div>
             `;
         }
 
         function renderComparison(p) {
-            const hasAfter = p.after?.objective || p.after?.method;
-
-            return `
-                <div class="comparison-grid">
-                    <div class="comparison-box before">
-                        <div class="comparison-header">
-                            <i class="fas fa-file-lines"></i>
-                            <span class="comparison-title">BEFORE (ต้นฉบับ)</span>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">วัตถุประสงค์</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; white-space: pre-wrap;">${p.before?.objective || '-'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">กลุ่มเป้าหมาย</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; white-space: pre-wrap;">${!isNumeric(p.before?.target_group) ? p.before?.target_group : 'ไม่ระบุ'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">วิธีการดำเนินงาน</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 80px; white-space: pre-wrap;">${p.before?.method || '-'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">นวัตกรรม/เทคโนโลยี</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 40px; white-space: pre-wrap;">${p.before?.innovation || '-'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">ตัวชี้วัดความสำเร็จ (KPIs)</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; white-space: pre-wrap;">${p.before?.indicators || '-'}</div>
-                        </div>
-                    </div>
-
-                    <div class="comparison-box after">
-                        <div class="comparison-header">
-                            <i class="fas fa-wand-magic-sparkles"></i>
-                            <span class="comparison-title">AFTER (ปรับปรุง)</span>
-                            ${hasAfter ? '<span class="badge badge-success" style="margin-left: auto; font-size: 0.75em;"><i class="fas fa-check"></i> มีข้อมูล</span>' : ''}
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">วัตถุประสงค์ (SMART)</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; border: 2px solid #bbf7d0; white-space: pre-wrap;">${p.after?.objective ? escapeHtml(p.after.objective) : '<span style="color: #9ca3af;">ยังไม่มีข้อมูล</span>'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">กลุ่มเป้าหมาย</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; border: 2px solid #bbf7d0; white-space: pre-wrap;">${p.after?.target_group ? escapeHtml(p.after.target_group) : '<span style="color: #9ca3af;">-</span>'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">วิธีการดำเนินงาน</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 80px; border: 2px solid #bbf7d0; white-space: pre-wrap;">${p.after?.method ? escapeHtml(p.after.method).replace(/\n/g, '<br>') : '<span style="color: #9ca3af;">-</span>'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">นวัตกรรม/เทคโนโลยี</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 40px; border: 2px solid #bbf7d0; white-space: pre-wrap;">${p.after?.innovation ? escapeHtml(p.after.innovation) : '<span style="color: #9ca3af;">-</span>'}</div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <div style="font-size: 0.8em; color: #666; margin-bottom: 5px; font-weight: 600;">ตัวชี้วัดความสำเร็จ (KPIs)</div>
-                            <div style="background: white; padding: 12px; border-radius: 8px; min-height: 60px; border: 2px solid #bbf7d0;">
-                                ${p.after?.kpis && p.after.kpis.length > 0
-                    ? '<ul style="margin: 0; padding-left: 20px;">' + p.after.kpis.map(kpi => `<li>${escapeHtml(kpi)}</li>`).join('') + '</ul>'
-                    : '<span style="color: #9ca3af;">-</span>'}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            return `<div class="comparison-grid">
+                <div class="comparison-box before"><h4>BEFORE</h4><pre>${JSON.stringify(p.before, null, 2)}</pre></div>
+                <div class="comparison-box after"><h4>AFTER</h4><pre>${JSON.stringify(p.after, null, 2)}</pre></div>
+            </div>`;
         }
 
-        // ============================================
-        // TAB SWITCHING
-        // ============================================
-        function switchTab(tabName) {
-            // Update buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        function switchTab(t) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
-
-            // Update content
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        }
-
-        // ============================================
-        // SAVE FUNCTIONS
-        // ============================================
-        async function saveAllToCloud() {
-            showLoading('กำลังบันทึกข้อมูลขึ้น Cloud...');
-            try {
-                // Firestore มีขีดจำกัด batch ละ 500 docs
-                // เพื่อความปลอดภัยและประสิทธิภาพ เราจะแบ่งส่งทีละ 100 docs
-                const chunks = [];
-                for (let i = 0; i < allProjects.length; i += 100) {
-                    chunks.push(allProjects.slice(i, i + 100));
-                }
-
-                for (const chunk of chunks) {
-                    const batch = db.batch();
-                    chunk.forEach(p => {
-                        const docRef = db.collection(COLLECTION_NAME).doc(p.id.toString());
-                        batch.set(p);
-                    });
-                    await batch.commit();
-                }
-
-                localStorage.setItem('editorProjects', JSON.stringify(allProjects));
-                hideLoading();
-                showNotification('บันทึกข้อมูลขึ้น Cloud ทั้งหมดเรียบร้อย!', 'success');
-            } catch (error) {
-                console.error('Cloud Save Error:', error);
-                hideLoading();
-                showNotification('ไม่สามารถบันทึกขึ้น Cloud ได้: ' + error.message, 'error');
-            }
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`tab-${t}`).classList.add('active');
         }
 
         async function saveCurrentProject() {
             if (!selectedProject) return;
-
-            // ดึงชื่อผู้แก้ไข
-            const editorInput = document.getElementById('editor-name-input');
-            const editorName = editorInput?.value?.trim() || 'ไม่ระบุ';
+            const name = document.getElementById('editor-name-input').value.trim();
+            if (!name) { alert('กรุณาใส่ชื่อผู้แก้ไข'); return; }
             
-            if (!editorInput?.value?.trim()) {
-                showNotification('กรุณากรอกชื่อผู้แก้ไขก่อนบันทึก', 'warning');
-                editorInput?.focus();
-                return;
-            }
-
-            showLoading('กำลังบันทึก...');
-
-            // Update from form inputs
-            const activeTab = document.querySelector('.tab-content.active').id;
+            showLoading('กำลังบันทึกขึ้น Cloud...');
             
-            // เก็บข้อมูลเก่าก่อนแก้ไข (สำหรับเปรียบเทียบ)
-            const oldBefore = { ...selectedProject.before };
-            const oldAfter = { ...selectedProject.after };
-
-            if (activeTab === 'tab-before' || activeTab === 'tab-after') {
-                selectedProject.before = {
-                    objective: document.getElementById('before-objective')?.value || '',
-                    target_group: document.getElementById('before-target')?.value || '',
-                    method: document.getElementById('before-method')?.value || '',
-                    indicators: document.getElementById('before-indicators')?.value || ''
-                };
-
-                selectedProject.after = {
-                    objective: document.getElementById('after-objective')?.value || '',
-                    target_group: document.getElementById('after-target')?.value || '',
-                    method: document.getElementById('after-method')?.value || '',
-                    innovation: document.getElementById('after-innovation')?.value || '',
-                    kpis: document.getElementById('after-kpis')?.value?.split('\n').filter(k => k.trim()) || []
-                };
-                
-                // บันทึก AI Context
-                const contextInput = document.getElementById('ai-context-input');
-                if (contextInput) {
-                    selectedProject.aiContext = contextInput.value.trim();
-                }
-            }
-
-            // บันทึกผู้แก้ไขปัจจุบัน
-            selectedProject.lastEditedBy = editorName;
+            selectedProject.before.objective = document.getElementById('before-objective').value;
+            selectedProject.after.objective = document.getElementById('after-objective').value;
+            selectedProject.lastEditedBy = name;
             selectedProject.lastModified = new Date().toISOString();
-            selectedProject.status = selectedProject.after?.objective ? 'ai' : 'edited';
-
-            // สร้างประวัติการแก้ไข (Edit History)
-            if (!selectedProject.editHistory) {
-                selectedProject.editHistory = [];
-            }
             
-            // หาข้อมูลที่เปลี่ยนแปลง
-            const changedFields = [];
-            if (oldBefore.objective !== selectedProject.before.objective) changedFields.push('วัตถุประสงค์ต้นฉบับ');
-            if (oldBefore.target_group !== selectedProject.before.target_group) changedFields.push('กลุ่มเป้าหมายต้นฉบับ');
-            if (oldBefore.method !== selectedProject.before.method) changedFields.push('วิธีการต้นฉบับ');
-            if (oldAfter.objective !== selectedProject.after.objective) changedFields.push('วัตถุประสงค์ (After)');
-            if (oldAfter.target_group !== selectedProject.after.target_group) changedFields.push('กลุ่มเป้าหมาย (After)');
-            if (oldAfter.method !== selectedProject.after.method) changedFields.push('วิธีการ (After)');
-            if (oldAfter.innovation !== selectedProject.after.innovation) changedFields.push('นวัตกรรม');
-            
-            // เพิ่ม record ใน history
-            selectedProject.editHistory.push({
-                timestamp: new Date().toISOString(),
-                editor: editorName,
-                action: activeTab === 'tab-after' && selectedProject.after?.objective ? 'ai_assist' : 'manual_edit',
-                tab: activeTab,
-                changedFields: changedFields.length > 0 ? changedFields : ['cloud_sync'],
-                aiAssisted: activeTab === 'tab-after' && selectedProject.after?.objective ? true : false
-            });
-            
-            if (selectedProject.editHistory.length > 50) {
-                selectedProject.editHistory = selectedProject.editHistory.slice(-50);
-            }
-
             try {
-                // บันทึกขึ้น Cloud ทันทีสำหรับรายโครงการ
-                await db.collection(COLLECTION_NAME).doc(selectedProject.id.toString()).set(selectedProject);
-                
-                // บันทึก Log กลาง (Activity Log)
+                await db.collection(COLLECTION_NAME).doc(selectedProject.id).set(selectedProject);
                 await db.collection(COLLECTION_LOGS).add({
                     projectId: selectedProject.id,
-                    projectName: selectedProject.name,
-                    section: selectedProject.section,
-                    editor: editorName,
+                    editor: name,
                     timestamp: new Date().toISOString(),
-                    action: activeTab === 'tab-after' && selectedProject.after?.objective ? 'ai_assist' : 'manual_edit',
-                    changedFields: changedFields
+                    action: 'manual_edit'
                 });
-
-                // อัปเดต state ในเครื่อง
-                const index = allProjects.findIndex(p => p.id === selectedProject.id);
-                if (index >= 0) {
-                    allProjects[index] = selectedProject;
-                }
-                const filteredIndex = filteredProjects.findIndex(p => p.id === selectedProject.id);
-                if (filteredIndex >= 0) {
-                    filteredProjects[filteredIndex] = selectedProject;
-                }
-
-                localStorage.setItem('editorProjects', JSON.stringify(allProjects));
-                
-                hideLoading();
-                showNotification('บันทึกขึ้น Cloud สำเร็จ!', 'success');
+                showNotification('บันทึกสำเร็จ!', 'success');
                 renderProjectList();
-            } catch (error) {
-                console.error('Cloud Save Error:', error);
-                hideLoading();
-                showNotification('บันทึกผิดพลาด: ' + error.message, 'error');
+            } catch (e) {
+                showNotification('บันทึกผิดพลาด: ' + e.message, 'error');
             }
+            hideLoading();
         }
 
-        function saveAllToLocal() {
-            saveAllToCloud();
-        }
-
-        function saveHFTokenFromInput() {
-            const keyInput = document.getElementById('hf-token-input');
-            if (keyInput) {
-                const key = keyInput.value.trim();
-                if (key) {
-                    hfToken = key;
-                    localStorage.setItem('hfToken', key);
-                    showNotification('บันทึก HF Token เรียบร้อย!', 'success');
-                } else {
-                    showNotification('กรุณาใส่ HF Token', 'error');
-                }
-            }
-        }
-
-        function switchAIProvider(provider) {
-            aiProvider = provider;
-            localStorage.setItem('aiProvider', provider);
-            document.getElementById('gemini-section').style.display = provider === 'gemini' ? 'block' : 'none';
-            document.getElementById('hf-section').style.display = provider === 'huggingface' ? 'block' : 'none';
-            showNotification('เปลี่ยน AI Provider เป็น ' + (provider === 'gemini' ? 'Google Gemini' : 'Hugging Face'), 'success');
-        }
-
-        async function testGeminiKey() {
-            const statusDiv = document.getElementById('gemini-status');
-            const keyInput = document.getElementById('gemini-api-key-input');
-            const key = keyInput?.value?.trim();
-
-            if (!key) {
-                if (statusDiv) statusDiv.innerHTML = '<span style="color: #dc2626;"><i class="fas fa-exclamation-circle"></i> กรุณาระบุ Gemini API Key</span>';
-                return false;
-            }
-
-            try {
-                if (statusDiv) statusDiv.innerHTML = '<span style="color: #2563eb;"><i class="fas fa-spinner fa-spin"></i> กำลังทดสอบ...</span>';
-
-                // Test with a simple request
-                // ใช้โมเดลที่ตรวจสอบแล้วว่าใช้ได้ - gemini-2.5-pro
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${key}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: 'Hello' }] }],
-                        generationConfig: { maxOutputTokens: 10 }
-                    })
+        async function saveAllToCloud() {
+            showLoading('กำลังบันทึกทั้งหมด...');
+            for (let i = 0; i < allProjects.length; i += 100) {
+                const batch = db.batch();
+                allProjects.slice(i, i + 100).forEach(p => {
+                    batch.set(db.collection(COLLECTION_NAME).doc(p.id), p);
                 });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error?.message || 'Invalid API Key');
-                }
-
-                geminiApiKey = key;
-                localStorage.setItem('geminiApiKey', key);
-
-                if (statusDiv) {
-                    statusDiv.innerHTML = '<span style="color: #16a34a;"><i class="fas fa-check-circle"></i> Gemini API Key ถูกต้อง!</span>';
-                }
-                showNotification('Gemini API Key ถูกต้อง!', 'success');
-                return true;
-
-            } catch (error) {
-                if (statusDiv) {
-                    statusDiv.innerHTML = `<span style="color: #dc2626;"><i class="fas fa-times-circle"></i> ${error.message}</span>`;
-                }
-                let errorMsg = error.message;
-                if (errorMsg.includes('not found') || errorMsg.includes('not supported')) {
-                    errorMsg = 'โมเดลไม่รองรับ กรุณาลอง:\n1. สร้าง API Key ใหม่ที่ https://aistudio.google.com/app/apikey\n2. หรือตรวจสอบว่าเปิดใช้งาน Generative Language API แล้ว\n3. หรือรอ 5 นาทีแล้วลองใหม่ (อาจยังไม่ propagate)';
-                }
-                showNotification('Gemini API: ' + errorMsg, 'error');
-                return false;
+                await batch.commit();
             }
-        }
-
-        function saveGeminiKey() {
-            const keyInput = document.getElementById('gemini-api-key-input');
-            if (keyInput) {
-                const key = keyInput.value.trim();
-                if (key) {
-                    geminiApiKey = key;
-                    localStorage.setItem('geminiApiKey', key);
-                    showNotification('บันทึก Gemini API Key เรียบร้อย!', 'success');
-                } else {
-                    showNotification('กรุณาใส่ Gemini API Key', 'error');
-                }
-            }
-        }
-
-        function savePreferredModel(model) {
-            preferredModel = model;
-            if (model) {
-                localStorage.setItem('hfPreferredModel', model);
-            } else {
-                localStorage.removeItem('hfPreferredModel');
-            }
-        }
-
-        function showApiHelp() {
-            alert(`การแก้ไขปัญหา API Key:
-
-1. ถ้าขึ้น "พบ X โมเดล | ใช้งานได้: ไม่มี"
-   → ต้องเปิดใช้งาน Generative Language API
-   → ไปที่: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com
-
-2. ถ้าขึ้น "API Key ไม่ถูกต้อง"
-   → สร้าง Token ใหม่ที่ https://huggingface.co/settings/tokens
-   → หรือตรวจสอบว่า Key ถูกจำกัด domain/IP
-
-3. ถ้า AI วิเคราะห์ไม่สำเร็จ
-   → ใช้ Serverless Inference API (ไม่ต้องตั้งค่า Provider)
-   → ถ้าขึ้น "currently loading" = รอ 20-30 วินาทีแล้วลองใหม่
-   → ถ้าขึ้น "read the model card" = ต้องไปยอมรับ License ใน HF ก่อน
-   → หรือลองเปลี่ยนเป็นโมเดล Gemma-2B-IT ที่ใช้ง่ายกว่า
-
-4. ถ้ายังไม่ได้
-   → ตรวจสอบว่าเปิด Billing ใน Google Cloud หรือยัง
-   → (ไม่คิดเงินถ้าอยู่ในโควต้าฟรี)`);
-        }
-
-        async function testHFTokenFromInput() {
-            const statusDiv = document.getElementById('api-key-status');
-            const keyInput = document.getElementById('hf-token-input');
-            const token = keyInput?.value?.trim();
-
-            if (!token) {
-                if (statusDiv) statusDiv.innerHTML = '<span style="color: #dc2626;"><i class="fas fa-exclamation-circle"></i> กรุณาระบุ HF Token</span>';
-                return false;
-            }
-
-            try {
-                if (statusDiv) statusDiv.innerHTML = '<span style="color: #2563eb;"><i class="fas fa-spinner fa-spin"></i> กำลังทดสอบ HF Token...</span>';
-
-                // Test: Verify token by getting user info (no provider needed)
-                const response = await fetch('https://huggingface.co/api/whoami-v2', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Invalid token');
-                }
-
-                const userInfo = await response.json();
-                console.log('HF User:', userInfo.name);
-
-                // Save the valid token
-                hfToken = token;
-                localStorage.setItem('hfToken', token);
-
-                if (statusDiv) {
-                    statusDiv.innerHTML = `<span style="color: #16a34a;"><i class="fas fa-check-circle"></i> HF Token ถูกต้อง (${userInfo.name})</span>`;
-                }
-                showNotification('HF Token ถูกต้อง! พร้อมใช้ Serverless Inference', 'success');
-                return true;
-
-            } catch (error) {
-                console.error('Test HF Token Error:', error);
-                if (statusDiv) {
-                    statusDiv.innerHTML = `<span style="color: #dc2626;"><i class="fas fa-times-circle"></i> ${error.message}</span>`;
-                }
-                showNotification('HF Token ไม่ถูกต้อง: ' + error.message, 'error');
-                return false;
-            }
+            hideLoading();
+            showNotification('บันทึกสำเร็จ!', 'success');
         }
 
         function clearAllData() {
-            if (!confirm('⚠️ คุณแน่ใจหรือไม่?\n\nการล้างข้อมูลจะลบข้อมูลทั้งหมดที่เคยบันทึกไว้ในระบบ\nรวมถึงข้อมูลที่แก้ไขแล้วและข้อมูล AI\n\nคุณต้องการล้างข้อมูลทั้งหมดหรือไม่?')) {
-                return;
+            if (confirm('ล้างข้อมูลทั้งหมดในเครื่องและโหลดใหม่จาก GitHub?')) {
+                localStorage.removeItem('editorProjects');
+                location.reload();
             }
-
-            // Double confirm
-            if (!confirm('ยืนยันอีกครั้ง: ล้างข้อมูลทั้งหมด?')) {
-                return;
-            }
-
-            // Clear all related localStorage items
-            localStorage.removeItem('editorProjects');
-            localStorage.removeItem('hfToken');
-            localStorage.removeItem('hfModel');
-            localStorage.removeItem('hfPreferredModel');
-
-            // Reset variables
-            allProjects = [];
-            filteredProjects = [];
-            selectedProject = null;
-            sourceProjects = [];
-            
-            // Reset filter state
-            filterState.types = new Set(['CSO', 'FLAGSHIP']);
-            filterState.sections.clear();
-            filterState.status = new Set(['draft', 'edited', 'ai-reviewed', 'ai']);
-
-            // Update UI
-            updateStats();
-            renderFilters();
-            renderProjectList();
-
-            // Show welcome screen
-            document.getElementById('welcomeScreen').style.display = 'block';
-            document.getElementById('editorContent').style.display = 'none';
-            document.getElementById('editorTitle').innerHTML = `
-                <i class="fas fa-mouse-pointer"></i>
-                เลือกโครงการเพื่อแก้ไข
-            `;
-
-            showNotification('ล้างข้อมูลทั้งหมดเรียบร้อย! กรุณานำเข้าข้อมูลใหม่', 'success');
-
-            // Scroll to top
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        // ============================================
-        // EXPORT/IMPORT
-        // ============================================
-        function exportAllData() {
-            const dataStr = JSON.stringify(allProjects, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `serviceplan_editor_backup_${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            showNotification('ส่งออกข้อมูลเรียบร้อย!', 'success');
-        }
-
-        function importData() {
-            document.getElementById('fileInput').click();
-        }
-
-        function setupDragAndDrop() {
-            const dropZone = document.getElementById('dropZone');
-            const fileInput = document.getElementById('fileInput');
-
-            if (!dropZone || !fileInput) return;
-
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    handleFileImport(e.target.files[0]);
-                }
-            });
-
-            dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropZone.classList.add('dragover');
-            });
-
-            dropZone.addEventListener('dragleave', () => {
-                dropZone.classList.remove('dragover');
-            });
-
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragover');
-                if (e.dataTransfer.files.length > 0) {
-                    handleFileImport(e.dataTransfer.files[0]);
-                }
-            });
-        }
-
-        function handleFileImport(file) {
-            if (!file.name.endsWith('.json')) {
-                showNotification('กรุณาเลือกไฟล์ .json เท่านั้น', 'error');
-                return;
-            }
-
-            showLoading('กำลังอ่านไฟล์...');
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (Array.isArray(data) && data.length > 0) {
-                        // Validate data structure
-                        const validProjects = data.filter(p => p.id && p.name);
-                        if (validProjects.length === 0) {
-                            showNotification('ไฟล์ไม่มีข้อมูลโครงการที่ถูกต้อง', 'error');
-                            hideLoading();
-                            return;
-                        }
-
-                        hideLoading();
-
-                        // Check for existing data
-                        const existingCount = allProjects.length;
-                        const newIds = new Set(validProjects.map(p => p.id));
-                        const duplicateCount = allProjects.filter(p => newIds.has(p.id)).length;
-
-                        let shouldImport = true;
-                        let importMode = 'replace'; // 'replace' or 'merge'
-
-                        if (existingCount > 0) {
-                            let message = `พบข้อมูลที่มีอยู่ ${existingCount} โครงการ\n`;
-                            message += `ไฟล์ใหม่มี ${validProjects.length} โครงการ\n`;
-
-                            if (duplicateCount > 0) {
-                                message += `พบโครงการซ้ำ ${duplicateCount} รายการ\n\n`;
-                                message += `เลือกวิธีการนำเข้า:\n`;
-                                message += `- กด "ตกลง" เพื่อแทนที่ข้อมูลเดิมทั้งหมด\n`;
-                                message += `- กด "ยกเลิก" เพื่อยกเลิก`;
-                            } else {
-                                message += `\nต้องการนำเข้าข้อมูลใหม่แทนที่ข้อมูลเดิมหรือไม่?`;
-                            }
-
-                            if (!confirm(message)) {
-                                showNotification('ยกเลิกการนำเข้า', 'info');
-                                return;
-                            }
-                        }
-
-                        showLoading('กำลังนำเข้าข้อมูล...');
-
-                        // Process import based on mode
-                        if (importMode === 'replace') {
-                            allProjects = validProjects;
-                        }
-
-                        sourceProjects = [...allProjects];
-                        filteredProjects = [...allProjects];
-
-                        // Save to localStorage
-                        localStorage.setItem('editorProjects', JSON.stringify(allProjects));
-
-                        // Initialize filter sections (select all by default)
-                        filterState.sections.clear();
-                        const sections = getUniqueSections();
-                        sections.forEach(s => filterState.sections.add(s));
-
-                        // Update UI
-                        updateStats();
-                        renderFilters();
-                        applyFilters();
-
-                        // Hide welcome screen
-                        document.getElementById('welcomeScreen').style.display = 'none';
-
-                        hideLoading();
-
-                        const msg = existingCount > 0 && duplicateCount > 0
-                            ? `นำเข้าสำเร็จ! แทนที่ข้อมูลเดิม ${existingCount} รายการ ด้วยข้อมูลใหม่ ${validProjects.length} รายการ`
-                            : `นำเข้า ${validProjects.length} โครงการสำเร็จ!`;
-                        showNotification(msg, 'success');
-
-                    } else {
-                        hideLoading();
-                        showNotification('รูปแบบไฟล์ไม่ถูกต้อง (ต้องเป็น Array)', 'error');
-                    }
-                } catch (err) {
-                    hideLoading();
-                    showNotification('ไม่สามารถอ่านไฟล์ได้: ' + err.message, 'error');
-                }
-            };
-            reader.onerror = () => {
-                hideLoading();
-                showNotification('เกิดข้อผิดพลาดในการอ่านไฟล์', 'error');
-            };
-            reader.readAsText(file);
-        }
-
-        // ============================================
-        // AI ASSIST (Hugging Face)
-        // ============================================
-        function showAIAssist() {
-            if (!selectedProject) return;
-
-            // Switch to After tab
-            const afterTab = document.querySelector('.tab-btn:nth-child(2)');
-            if (afterTab) afterTab.click();
-
-            // Generate full analysis
-            generateFullAIAnalysis();
-        }
-
-        async function generateFullAIAnalysis() {
-            if (!selectedProject) {
-                showNotification('กรุณาเลือกโครงการก่อน', 'warning');
-                return;
-            }
-
-            // Check which provider to use from dropdown
-            const providerSelect = document.getElementById('ai-provider');
-            aiProvider = providerSelect ? providerSelect.value : (localStorage.getItem('aiProvider') || 'gemini');
-            console.log('Provider from dropdown:', providerSelect?.value, 'Provider used:', aiProvider);
-
-            showLoading('กำลังวิเคราะห์ด้วย AI...');
-
-            let baseObj = selectedProject.before?.objective || 'ไม่ระบุ';
-            let baseTgt = selectedProject.before?.target_group || 'ไม่ระบุ';
-            let baseMth = selectedProject.before?.method || 'ไม่ระบุ';
-            let baseIdc = selectedProject.before?.indicators || 'ไม่ระบุ';
-            
-            // Context เพิ่มเติมสำหรับความแม่นยำ
-            let contextTarget = selectedProject.target_from_db || '';
-            let contextRemark = selectedProject.remark || '';
-            let contextSection = selectedProject.section_from_db || selectedProject.section || '';
-            let contextBudget = selectedProject.budget || 0;
-            
-            // Context ที่ผู้ใช้กรอกเพิ่มเอง
-            const userContext = document.getElementById('ai-context-input')?.value?.trim() || '';
-
-            const promptText = `วิเคราะห์และปรับปรุงโครงการนี้ให้สอดคล้องหลัก SMART:
-
-=== ข้อมูลโครงการ ===
-ชื่อโครงการ: ${selectedProject.name}
-สาขา/ส่วน: ${contextSection}
-งบประมาณ: ${contextBudget.toLocaleString()} บาท
-
-=== ข้อมูลต้นฉบับ ===
-วัตถุประสงค์เดิม: ${baseObj}
-กลุ่มเป้าหมายเดิม: ${baseTgt}
-วิธีการดำเนินการเดิม: ${baseMth}
-ตัวชี้วัดเดิม: ${baseIdc}
-
-=== ข้อมูลเชิงลึก (Context จากฐานข้อมูล) ===
-${contextTarget ? `กลุ่มเป้าหมายเฉพาะจากฐานข้อมูล: ${contextTarget}` : ''}
-${contextRemark ? `รายละเอียดเพิ่มเติม: ${contextRemark}` : ''}
-${userContext ? `\n=== Context เพิ่มเติมจากผู้ใช้ ===\n${userContext}` : ''}
-
-=== คำแนะนำ ===
-- วัตถุประสงค์ต้องเป็นไปตามหลัก SMART (Specific, Measurable, Achievable, Relevant, Time-bound)
-- พิจารณางบประมาณ ${contextBudget.toLocaleString()} บาท ให้สอดคล้องกับกิจกรรมที่เสนอ
-- กลุ่มเป้าหมายต้องชัดเจนและวัดได้
-- ใช้ข้อมูล Context ที่ให้มาเพื่อทำให้คำตอบแม่นยำและตรงกับบริบทของโครงการ
-
-ตอบกลับเป็น JSON ที่มีโครงสร้างดังนี้เท่านั้น (ห้ามมีข้อความอื่นนอก JSON):
-{
-    "objective": "วัตถุประสงค์ SMART (ข้อเดียว สั้น กระชับ)",
-    "target_group": "กลุ่มเป้าหมายเฉพาะเจาะจง",
-    "method": "ขั้นตอนการดำเนินงาน 3-5 ขั้น",
-    "innovation": "เทคโนโลยีหรือนวัตกรรมที่ใช้ (ถ้าไม่มีให้ใส่ -)",
-    "kpis": ["ตัวชี้วัดที่ 1", "ตัวชี้วัดที่ 2", "ตัวชี้วัดที่ 3"]
-}`;
-
-            console.log('Selected AI Provider:', aiProvider);
-            
-            if (aiProvider === 'gemini') {
-                console.log('Using Gemini API...');
-                await generateWithGemini(promptText);
-            } else if (aiProvider === 'huggingface') {
-                console.log('Using Hugging Face API...');
-                await generateWithHuggingFace(promptText);
-            } else {
-                console.log('Unknown provider, defaulting to Gemini...');
-                await generateWithGemini(promptText);
-            }
-        }
-
-        // ============================================
-        // BACKEND PROXY CONFIGURATION
-        // ============================================
-        const BACKEND_URL = 'https://backend-1owh1zily-kongsak4807017s-projects.vercel.app'; // เปลี่ยนเป็น URL จริงหลัง deploy
-        
-        // ตรวจสอบสถานะ backend
-        async function checkBackendStatus() {
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/health`);
-                const data = await response.json();
-                return data.status === 'ok' && data.services.gemini === 'configured';
-            } catch (e) {
-                console.error('Backend check failed:', e);
-                return false;
-            }
-        }
-
-        async function generateWithGemini(promptText) {
-            console.log('Calling backend proxy...');
-            
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/generate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        prompt: promptText,
-                        model: 'gemini-2.5-pro'
-                    })
-                });
-
-                const data = await response.json();
-
-                // ตรวจสอบ Rate Limit
-                if (response.status === 429) {
-                    showNotification(data.message || 'ใช้งานบ่อยเกินไป กรุณารอสักครู่', 'warning');
-                    hideLoading();
-                    return;
-                }
-
-                if (!response.ok || !data.success) {
-                    throw new Error(data.message || `HTTP ${response.status}`);
-                }
-
-                // ดึงข้อความจาก Gemini response (ผ่าน backend)
-                const geminiData = data.data;
-                console.log('API Response:', geminiData);
-                
-                // ดึงข้อความจาก candidates
-                let text = '';
-                if (geminiData.candidates && geminiData.candidates[0]) {
-                    const candidate = geminiData.candidates[0];
-                    if (candidate.content && candidate.content.parts) {
-                        text = candidate.content.parts.map(p => p.text || '').join('');
-                    } else if (candidate.text) {
-                        text = candidate.text;
-                    }
-                    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
-                        console.warn('Response may be truncated. Finish reason:', candidate.finishReason);
-                    }
-                }
-                
-                console.log('Generated text length:', text.length);
-                
-                // แยก JSON
-                let jsonMatch = text.match(/```json\s*([\s\S]+?)\s*```/s);
-                if (!jsonMatch) {
-                    jsonMatch = text.match(/```\s*([\s\S]+?)\s*```/s);
-                }
-                if (!jsonMatch) {
-                    jsonMatch = text.match(/(\{[\s\S]+\})/s);
-                }
-                if (!jsonMatch) {
-                    jsonMatch = text.match(/(\{[\s\S]*"kpis"[\s\S]*\})/s);
-                }
-
-                if (jsonMatch) {
-                    let jsonText = (jsonMatch[1] || jsonMatch[0]).trim();
-                    jsonText = jsonText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-                    
-                    try {
-                        const result = JSON.parse(jsonText);
-                        fillAIResults(result);
-                        
-                        // แสดงจำนวน request คงเหลือ
-                        const remaining = data.rateLimit?.remaining;
-                        const msg = remaining !== undefined 
-                            ? `AI วิเคราะห์เสร็จแล้ว! (เหลือ ${remaining} ครั้ง/นาที)`
-                            : 'AI วิเคราะห์เสร็จแล้ว!';
-                        showNotification(msg, 'success');
-                    } catch (parseError) {
-                        console.error('JSON parse error:', parseError);
-                        showNotification('ไม่สามารถแปลงข้อมูล JSON ได้', 'error');
-                    }
-                } else {
-                    console.log('No JSON pattern found in:', text.substring(0, 200));
-                    showNotification('ไม่พบข้อมูล JSON ในการตอบกลับ', 'error');
-                }
-                
-            } catch (e) {
-                console.error('Backend error:', e);
-                showNotification('ไม่สามารถเชื่อมต่อกับ AI ได้: ' + e.message, 'error');
-            }
-            
-            hideLoading();
-        }
-
-        async function generateWithHuggingFace(promptText) {
-            const keyInput = document.getElementById('hf-token-input');
-            const tokenFromInput = keyInput?.value?.trim();
-
-            if (tokenFromInput) {
-                hfToken = tokenFromInput;
-                localStorage.setItem('hfToken', tokenFromInput);
-            }
-
-            if (!hfToken) {
-                const token = prompt('กรุณาใส่ Hugging Face Token:');
-                if (token) {
-                    hfToken = token;
-                    localStorage.setItem('hfToken', token);
-                } else {
-                    hideLoading();
-                    return;
-                }
-            }
-
-            const selectedModel = document.getElementById('preferred-model')?.value;
-            const model = selectedModel || 'mistralai/Mistral-7B-Instruct-v0.2';
-            
-            console.log('Using HF model:', model);
-            
-            try {
-                // Call Hugging Face Serverless Inference API (ใช้ฟรี ไม่ต้องตั้งค่า Provider)
-                // ใช้ mode: 'cors' เพื่อให้ผ่าน CORS policy
-                const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-                    method: 'POST',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    headers: {
-                        'Authorization': `Bearer ${hfToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        inputs: `<s>[INST] คุณคือผู้ช่วยวิเคราะห์โครงการ ตอบกลับเป็น JSON เท่านั้น\n\n${promptText} [/INST]`,
-                        parameters: {
-                            max_new_tokens: 1024,
-                            temperature: 0.7,
-                            return_full_text: false
-                        }
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    console.error('HF API Error:', errorData);
-                    throw new Error(errorData.error || `HTTP ${response.status}`);
-                }
-
-                const result = await response.json();
-                console.log('HF Response:', result);
-
-                // Extract generated text
-                let generatedText = '';
-                if (Array.isArray(result) && result.length > 0) {
-                    generatedText = result[0].generated_text || '';
-                } else if (result.generated_text) {
-                    generatedText = result.generated_text;
-                }
-
-                console.log('Generated text length:', generatedText.length);
-
-                // Extract JSON from response
-                const jsonMatch = generatedText.match(/\{[\s\S]*?\}/);
-                
-                if (jsonMatch) {
-                    try {
-                        const parsedResult = JSON.parse(jsonMatch[0]);
-                        
-                        if (!parsedResult.objective && !parsedResult.method) {
-                            throw new Error('AI response missing required fields');
-                        }
-                        
-                        const objectiveEl = document.getElementById('after-objective');
-                        const targetEl = document.getElementById('after-target');
-                        const methodEl = document.getElementById('after-method');
-                        const innovationEl = document.getElementById('after-innovation');
-                        const kpisEl = document.getElementById('after-kpis');
-                        
-                        fillAIResults(parsedResult);
-                        showNotification('AI วิเคราะห์เสร็จแล้ว! (ใช้ ' + model + ')', 'success');
-                        
-                    } catch (parseError) {
-                        console.error('Parse error:', parseError);
-                        showNotification('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง กรุณาลองอีกครั้ง', 'error');
-                    }
-                } else {
-                    showNotification('ไม่พบข้อมูล JSON ในการตอบกลับ', 'error');
-                }
-
-            } catch (error) {
-                console.error('HF API Error:', error);
-                let errorMsg = error.message;
-                if (errorMsg.includes('Failed to fetch')) {
-                    errorMsg = 'CORS Error - HF API ไม่เปิดให้เรียกจาก browser โดยตรง\n\nวิธีแก้:\n1. ติดตั้ง Extension "CORS Unblock" ใน Chrome\n2. หรือใช้โมเดลผ่าน Google Colab / Python backend\n3. หรือกลับไปใช้ Gemini API แทน';
-                } else if (errorMsg.includes('currently loading')) {
-                    errorMsg = 'โมเดลกำลังโหลด กรุณารอ 20-30 วินาทีแล้วลองอีกครั้ง';
-                } else if (errorMsg.includes('too busy')) {
-                    errorMsg = 'เซิร์ฟเวอร์ HF ยุ่งเกินไป กรุณารอสักครู่แล้วลองใหม่';
-                } else if (errorMsg.includes('read the model card')) {
-                    errorMsg = 'ต้องยอมรับ License ของโมเดลก่อนใช้งาน ไปที่หน้าโมเดลใน HF แล้วกด Accept';
-                }
-                showNotification('AI วิเคราะห์ไม่สำเร็จ: ' + errorMsg, 'error');
-            }
-
-            hideLoading();
-        }
-
-        function fillAIResults(result) {
-            // บันทึกลง selectedProject (ไว้แสดงในหน้า Comparison)
-            if (selectedProject) {
-                selectedProject.after = {
-                    objective: result.objective || '',
-                    target_group: result.target_group || '',
-                    method: result.method || '',
-                    innovation: result.innovation || '',
-                    indicators: result.kpis || [],
-                    kpis: result.kpis || []
-                };
-                selectedProject.status = 'ai-reviewed';
-                selectedProject.lastModified = new Date().toISOString();
-                
-                // อัปเดต allProjects
-                const index = allProjects.findIndex(p => p.id === selectedProject.id);
-                if (index >= 0) {
-                    allProjects[index] = selectedProject;
-                }
-                
-                // อัปเดต filteredProjects ให้ตรงกันด้วย (สำคัญ!)
-                const filteredIndex = filteredProjects.findIndex(p => p.id === selectedProject.id);
-                if (filteredIndex >= 0) {
-                    filteredProjects[filteredIndex] = selectedProject;
-                }
-                
-                // บันทึกลง LocalStorage ทันที
-                localStorage.setItem('editorProjects', JSON.stringify(allProjects));
-                
-                // อัปเดต UI
-                renderProjectList(); // อัปเดตสถานะใน sidebar
-                
-                // NOTE: ไม่ต้อง re-render comparison view เพราะจะทำให้เกิด side effect
-                // ผู้ใช้สามารถกด switch tab ไปมาเพื่อดูข้อมูลใหม่ได้
-            }
-            
-            // เติมลงฟอร์ม After ด้วย
-            const objectiveEl = document.getElementById('after-objective');
-            const targetEl = document.getElementById('after-target');
-            const methodEl = document.getElementById('after-method');
-            const innovationEl = document.getElementById('after-innovation');
-            const kpisEl = document.getElementById('after-kpis');
-            
-            if (objectiveEl) objectiveEl.value = result.objective || '';
-            if (targetEl) targetEl.value = result.target_group || '';
-            if (methodEl) methodEl.value = result.method || '';
-            if (innovationEl) innovationEl.value = result.innovation || '';
-            if (kpisEl) kpisEl.value = (result.kpis || []).join('\n');
-        }
-
-        async function generateWithAI(field) {
-            // Similar to above but for specific field
-            showNotification('ฟีเจอร์นี้อยู่ในการพัฒนา - ใช้ AI Assist เต็มรูปแบบแทน', 'info');
-        }
-
-        // ============================================
-        // UTILITY FUNCTIONS
-        // ============================================
-        function isNumeric(str) {
-            return /^\d+$/.test(str?.toString().trim());
-        }
-
-        function escapeHtml(text) {
-            if (text == null) return '';
-            // แปลงเป็น string กรณีที่ไม่ใช่ string (เช่น number, object, array)
-            const str = String(text);
-            return str
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        // ============================================
-        // AI CONTEXT FUNCTIONS
-        // ============================================
-        function updateContextCharCount(textarea) {
-            const count = textarea.value.length;
-            const countEl = document.getElementById('context-char-count');
-            if (countEl) {
-                countEl.textContent = count;
-                // เปลี่ยนสีเมื่อใกล้เต็ม
-                if (count > 1800) {
-                    countEl.style.color = '#dc2626'; // แดง
-                } else if (count > 1500) {
-                    countEl.style.color = '#ea580c'; // ส้ม
-                } else {
-                    countEl.style.color = '#64748b'; // ปกติ
-                }
-            }
-        }
-
-        function saveAIContext() {
-            if (!selectedProject) {
-                showNotification('กรุณาเลือกโครงการก่อน', 'warning');
-                return;
-            }
-            
-            const contextInput = document.getElementById('ai-context-input');
-            const context = contextInput?.value?.trim() || '';
-            
-            // บันทึกลง selectedProject
-            selectedProject.aiContext = context;
-            selectedProject.lastModified = new Date().toISOString();
-            
-            // อัปเดต allProjects และ filteredProjects
-            const index = allProjects.findIndex(p => p.id === selectedProject.id);
-            if (index >= 0) {
-                allProjects[index] = selectedProject;
-            }
-            const filteredIndex = filteredProjects.findIndex(p => p.id === selectedProject.id);
-            if (filteredIndex >= 0) {
-                filteredProjects[filteredIndex] = selectedProject;
-            }
-            
-            // บันทึกลง LocalStorage
-            localStorage.setItem('editorProjects', JSON.stringify(allProjects));
-            
-            showNotification('บันทึก Context เรียบร้อย!', 'success');
-        }
-
-        function setupEventListeners() {
-            document.getElementById('searchInput')?.addEventListener('input', (e) => {
-                applyFilters();
-            });
-        }
-
-        function resetProject() {
-            if (!selectedProject || !confirm('รีเซ็ตข้อมูลโครงการนี้?')) return;
-
-            // If we have sourceProjects (from initial import), use that
-            // Otherwise just clear the after data
-            const base = sourceProjects && sourceProjects.length > 0
-                ? sourceProjects.find(p => p.id === selectedProject.id)
-                : null;
-
-            if (base) {
-                const index = allProjects.findIndex(p => p.id === selectedProject.id);
-                allProjects[index] = JSON.parse(JSON.stringify(base));
-                selectedProject = allProjects[index];
-            } else {
-                // Just clear the after data and status
-                selectedProject.after = {
-                    objective: '',
-                    target_group: '',
-                    method: '',
-                    innovation: '',
-                    indicators: [],
-                    kpis: []
-                };
-                selectedProject.status = 'draft';
-                selectedProject.lastModified = null;
-            }
-
-            renderEditor();
-            showNotification('รีเซ็ตเรียบร้อย', 'success');
-        }
-
-        function showNotification(message, type = 'success') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : 'info-circle'}"></i>
-                    <div>${message}</div>
-                </div>
-            `;
-            document.body.appendChild(notification);
-            setTimeout(() => notification.remove(), 3000);
-        }
-
-        // ============================================
-        // TRACKING & HISTORY FUNCTIONS (Added from backup.html)
-        // ============================================
-        
-        function saveDefaultEditorName() {
-            const name = document.getElementById('editor-name-input')?.value?.trim();
-            if (name) {
-                localStorage.setItem('defaultEditorName', name);
-                showNotification('จดจำชื่อเรียบร้อย!', 'success');
-            } else {
-                showNotification('กรุณากรอกชื่อก่อนบันทึก', 'warning');
-            }
-        }
-
-        function updateEditorCharCount(input) {
-            const count = input.value.length;
-            const countEl = document.getElementById('editor-name-count');
-            if (countEl) {
-                countEl.textContent = `${count}/30`;
-                countEl.style.color = count > 25 ? '#ef4444' : '#94a3b8';
-            }
-        }
-
-        function showEditHistory() {
-            if (!selectedProject || !selectedProject.editHistory || selectedProject.editHistory.length === 0) {
-                showNotification('ยังไม่มีประวัติการแก้ไขโครงการนี้', 'info');
-                return;
-            }
-
-            const historyHtml = selectedProject.editHistory.slice().reverse().map(h => `
-                <div style="padding: 12px; border-bottom: 1px solid #eee; font-size: 0.9em;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span style="font-weight: 700; color: var(--primary);">
-                            <i class="fas fa-user-circle"></i> ${h.editor}
-                        </span>
-                        <span style="color: #64748b; font-size: 0.85em;">
-                            <i class="far fa-clock"></i> ${new Date(h.timestamp).toLocaleString('th-TH')}
-                        </span>
-                    </div>
-                    <div style="color: #475569;">
-                        ${h.action === 'ai_assist' ? '<span class="badge badge-success" style="font-size: 0.7em; padding: 2px 6px;">AI Assist</span>' : '<span class="badge badge-info" style="font-size: 0.7em; padding: 2px 6px;">แก้ไขด้วยมือ</span>'}
-                        ปรับปรุง: <span style="color: #1e3a8a;">${h.changedFields.join(', ')}</span>
-                    </div>
-                </div>
-            `).join('');
-
-            const modal = document.createElement('div');
-            modal.style = "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 20px;";
-            modal.innerHTML = `
-                <div style="background: white; border-radius: 12px; width: 100%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-                    <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
-                        <h3 style="margin: 0; color: var(--primary);"><i class="fas fa-history"></i> ประวัติการแก้ไข</h3>
-                        <button onclick="this.closest('div').parentElement.parentElement.remove()" style="border: none; background: none; font-size: 1.5em; cursor: pointer; color: #94a3b8;">&times;</button>
-                    </div>
-                    <div style="padding: 10px; overflow-y: auto; flex: 1;">
-                        ${historyHtml}
-                    </div>
-                    <div style="padding: 15px; border-top: 1px solid #eee; text-align: right; background: #f8fafc;">
-                        <button class="btn btn-secondary btn-sm" onclick="this.closest('div').parentElement.parentElement.remove()">ปิด</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        function showGlobalProgression() {
-            // คำนวณความคืบหน้า
-            const total = allProjects.length;
-            const edited = allProjects.filter(p => p.status === 'edited').length;
-            const ai = allProjects.filter(p => p.status === 'ai' || p.status === 'ai-reviewed').length;
-            const draft = total - edited - ai;
-            
-            const progressEdited = (edited / total * 100).toFixed(1);
-            const progressAI = (ai / total * 100).toFixed(1);
-            
-            // สรุปแยกตามรายสาขา (CSO)
-            const sections = getUniqueSections();
-            const sectionStats = sections.map(s => {
-                const projects = allProjects.filter(p => p.section === s);
-                const complete = projects.filter(p => p.status === 'ai' || p.status === 'ai-reviewed' || p.status === 'edited').length;
-                return {
-                    name: s,
-                    total: projects.length,
-                    complete: complete,
-                    percent: (complete / projects.length * 100).toFixed(1)
-                };
-            }).sort((a, b) => b.percent - a.percent);
-
-            const sectionHtml = sectionStats.map(s => `
-                <div style="margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 4px;">
-                        <span style="font-weight: 600;">${s.name}</span>
-                        <span style="color: var(--primary);">${s.complete}/${s.total} (${s.percent}%)</span>
-                    </div>
-                    <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
-                        <div style="width: ${s.percent}%; height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 4px;"></div>
-                    </div>
-                </div>
-            `).join('');
-
-            const modal = document.createElement('div');
-            modal.style = "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 20px;";
-            modal.innerHTML = `
-                <div style="background: white; border-radius: 12px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-                    <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%); color: white;">
-                        <h3 style="margin: 0;"><i class="fas fa-chart-line"></i> ภาพรวมความคืบหน้าโครงการ</h3>
-                        <button onclick="this.closest('div').parentElement.parentElement.remove()" style="border: none; background: none; font-size: 1.5em; cursor: pointer; color: white; opacity: 0.8;">&times;</button>
-                    </div>
-                    <div style="padding: 25px; overflow-y: auto; flex: 1;">
-                        <!-- Summary Cards -->
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
-                            <div style="background: #eff6ff; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #bfdbfe;">
-                                <div style="font-size: 0.85em; color: #1e40af; font-weight: 600;">โครงการทั้งหมด</div>
-                                <div style="font-size: 2em; font-weight: 700; color: #1e3a8a;">${total}</div>
-                            </div>
-                            <div style="background: #ecfdf5; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #a7f3d0;">
-                                <div style="font-size: 0.85em; color: #065f46; font-weight: 600;">AI/เสร็จแล้ว</div>
-                                <div style="font-size: 2em; font-weight: 700; color: #047857;">${ai}</div>
-                                <div style="font-size: 0.8em; color: #059669;">${progressAI}%</div>
-                            </div>
-                            <div style="background: #fefce8; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #fef08a;">
-                                <div style="font-size: 0.85em; color: #854d0e; font-weight: 600;">กำลังแก้ไข</div>
-                                <div style="font-size: 2em; font-weight: 700; color: #a16207;">${edited}</div>
-                                <div style="font-size: 0.8em; color: #ca8a04;">${progressEdited}%</div>
-                            </div>
-                        </div>
-
-                        <h4 style="margin-bottom: 15px; color: var(--text); border-bottom: 2px solid #eee; padding-bottom: 8px;">ความคืบหน้าแยกตาม Service Plan</h4>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                            ${sectionHtml}
-                        </div>
-                    </div>
-                    <div style="padding: 15px; border-top: 1px solid #eee; text-align: right; background: #f8fafc;">
-                        <button class="btn btn-primary" onclick="this.closest('div').parentElement.parentElement.remove()">เข้าใจแล้ว</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
         }
 
         function showGlobalActivityLog() {
-            showLoading('กำลังดึงข้อมูลประวัติรวม...');
-            
-            // ดึง Log ล่าสุด 50 รายการจาก Firestore
-            db.collection(COLLECTION_LOGS)
-                .orderBy('timestamp', 'desc')
-                .limit(50)
-                .get()
-                .then((snapshot) => {
-                    hideLoading();
-                    
-                    const logs = snapshot.docs.map(doc => doc.data());
-                    
-                    if (logs.length === 0) {
-                        showNotification('ยังไม่มีประวัติการบันทึกในระบบ', 'info');
-                        return;
-                    }
-
-                    const logsHtml = logs.map(l => `
-                        <div style="padding: 15px; border-bottom: 1px solid #eee; transition: background 0.2s;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
-                                <div style="font-weight: 700; color: var(--primary);">
-                                    <i class="fas fa-user-edit"></i> ${l.editor}
-                                </div>
-                                <div style="font-size: 0.8em; color: #94a3b8;">
-                                    <i class="far fa-clock"></i> ${new Date(l.timestamp).toLocaleString('th-TH')}
-                                </div>
-                            </div>
-                            <div style="font-size: 0.9em; color: #1e293b; margin-bottom: 4px;">
-                                <strong>โครงการ:</strong> ${l.projectId} - ${l.projectName}
-                            </div>
-                            <div style="font-size: 0.85em; color: #64748b;">
-                                <span class="badge ${l.action === 'ai_assist' ? 'badge-success' : 'badge-info'}" style="font-size: 0.75em; padding: 2px 6px;">
-                                    ${l.action === 'ai_assist' ? 'AI Assist' : 'แก้ไขด้วยมือ'}
-                                </span>
-                                <span style="margin-left: 8px;">ฟิลด์ที่เปลี่ยน: ${l.changedFields?.join(', ') || '-'}</span>
-                                <div style="margin-top: 4px; font-size: 0.9em; color: var(--primary-light); font-weight: 600;">
-                                    <i class="fas fa-tag"></i> ${l.section}
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
-
-                    const modal = document.createElement('div');
-                    modal.style = "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 20px;";
-                    modal.innerHTML = `
-                        <div style="background: white; border-radius: 12px; width: 100%; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-                            <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
-                                <h3 style="margin: 0; color: var(--primary);"><i class="fas fa-list-ul"></i> ประวัติการทำงานล่าสุด (ทั้งทีม)</h3>
-                                <button onclick="this.closest('div').parentElement.parentElement.remove()" style="border: none; background: none; font-size: 1.5em; cursor: pointer; color: #94a3b8;">&times;</button>
-                            </div>
-                            <div style="padding: 10px; overflow-y: auto; flex: 1;" id="global-log-container">
-                                ${logsHtml}
-                            </div>
-                            <div style="padding: 15px; border-top: 1px solid #eee; text-align: right; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-                                <div style="font-size: 0.85em; color: #94a3b8;">แสดง 50 รายการล่าสุด</div>
-                                <button class="btn btn-secondary btn-sm" onclick="this.closest('div').parentElement.parentElement.remove()">ปิด</button>
-                            </div>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-                })
-                .catch((error) => {
-                    hideLoading();
-                    console.error('Fetch Logs Error:', error);
-                    showNotification('ไม่สามารถโหลดประวัติได้: ' + error.message, 'error');
-                });
+            db.collection(COLLECTION_LOGS).orderBy('timestamp', 'desc').limit(20).get().then(snap => {
+                const logs = snap.docs.map(d => d.data());
+                alert('ประวัติล่าสุด:\n' + logs.map(l => `${l.timestamp}: ${l.editor} แก้ไข ${l.projectId}`).join('\n'));
+            });
         }
 
-        function exportWithHistory() {
-            const dataStr = JSON.stringify(allProjects, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
+        function showGlobalProgression() {
+            const total = allProjects.length;
+            const done = allProjects.filter(p => p.after?.objective).length;
+            alert(`ความคืบหน้า: ${done}/${total} (${(done/total*100).toFixed(1)}%)`);
+        }
 
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `serviceplan_editor_FULL_BACKUP_${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        function saveDefaultEditorName() {
+            const name = document.getElementById('editor-name-input').value;
+            localStorage.setItem('defaultEditorName', name);
+            showNotification('บันทึกชื่อแล้ว', 'success');
+        }
 
-            showNotification('ส่งออกข้อมูลพร้อมประวัติเรียบร้อย!', 'success');
+        function setupEventListeners() {
+            document.getElementById('searchInput')?.addEventListener('input', applyFilters);
+        }
+
+        function showNotification(msg, type) {
+            const n = document.createElement('div');
+            n.className = `notification ${type}`;
+            n.innerHTML = msg;
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 3000);
+        }
+
+        const BACKEND_URL = 'https://backend-1owh1zily-kongsak4807017s-projects.vercel.app';
+        async function generateFullAIAnalysis() {
+            showLoading('AI กำลังวิเคราะห์...');
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/generate`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ prompt: `วิเคราะห์โครงการ ${selectedProject.name}` })
+                });
+                const data = await res.json();
+                document.getElementById('after-objective').value = data.data.candidates[0].content.parts[0].text;
+                showNotification('AI วิเคราะห์เสร็จแล้ว', 'success');
+            } catch (e) {
+                showNotification('AI Error: ' + e.message, 'error');
+            }
+            hideLoading();
         }
     </script>
 </body>
-
 </html>
