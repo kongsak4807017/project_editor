@@ -997,8 +997,13 @@
         // ============================================
         async function loadFromJSON() {
             showLoading('กำลังดึงข้อมูลจาก Server...');
-            // ลองดึงจากหลายๆ path ที่อาจเป็นไปได้บน GitHub Pages
-            const paths = ['./projects_complete.json', 'projects_complete.json'];
+            // เพิ่ม path โฟลเดอร์ project_editor/ เข้าไปด้วย
+            const paths = [
+                './projects_complete.json', 
+                'projects_complete.json',
+                './project_editor/projects_complete.json',
+                'project_editor/projects_complete.json'
+            ];
             let success = false;
 
             for (const path of paths) {
