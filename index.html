@@ -797,10 +797,7 @@
                 <button class="btn btn-success btn-sm" onclick="saveAllToLocal()">
                     <i class="fas fa-save"></i> บันทึกทั้งหมด
                 </button>
-                <button class="btn btn-sm" style="background: #fee2e2; color: #dc2626; border: 1px solid #fecaca;"
-                    onclick="clearAllData()">
-                    <i class="fas fa-trash-alt"></i> ล้างข้อมูล
-                </button>
+
             </div>
         </div>
     </header>
@@ -1963,24 +1960,7 @@
             }
         }
 
-        function clearAllData() {
-            if (confirm("ระวัง! ยืนยันที่จะลบข้อมูลทั้งหมดจากฐานข้อมูล Firebase หรือไม่? ข้อมูลจะหายไปถาวรและส่งผลต่อทุกคน!")) {
-                showLoading('กำลังล้างข้อมูล...');
-                const batch = db.batch();
-                allProjects.forEach(p => {
-                    batch.delete(db.collection('projects').doc(p.id));
-                });
-                batch.commit().then(() => {
-                    hideLoading();
-                    showNotification("ล้างข้อมูลทั้งหมดแล้ว", "success");
-                }).catch(err => {
-                    hideLoading();
-                    showNotification("เกิดข้อผิดพลาด: " + err.message, "error");
-                });
-            }
-        }
-
-        // ============================================
+// ============================================
         // EXPORT/IMPORT
         // ============================================
         function exportAllData() {
