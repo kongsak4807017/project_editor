@@ -976,14 +976,24 @@
 
         async function handleInitialLoad() {
             const saved = localStorage.getItem('editorProjects');
-            if (saved && JSON.parse(saved).length > 0) {
-                allProjects = JSON.parse(saved);
-                sourceProjects = JSON.parse(JSON.stringify(allProjects));
-                updateUI();
-                hideLoading();
-            } else {
-                await loadFromJSON();
+
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        allProjects = parsed;
+                        sourceProjects = JSON.parse(JSON.stringify(allProjects));
+                        updateUI();
+                        hideLoading();
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Invalid editorProjects in localStorage. Falling back to JSON.', error);
+                    localStorage.removeItem('editorProjects');
+                }
             }
+
+            await loadFromJSON();
         }
 
         async function loadFromJSON() {
@@ -1031,15 +1041,22 @@
                     
                     if (response.ok) {
                         const data = await response.json();
-                        if (Array.isArray(data) && data.length > 0) {
-                            allProjects = data;
+                        const normalizedData = Array.isArray(data)
+                            ? data
+                            : (Array.isArray(data?.projects) ? data.projects : []);
+
+                        if (normalizedData.length > 0) {
+                            allProjects = normalizedData;
                             sourceProjects = JSON.parse(JSON.stringify(allProjects));
                             updateUI();
                             hideLoading();
                             showNotification('โหลดข้อมูลสำเร็จจาก: ' + path, 'success');
-                            console.log('Success! Loaded from:', path);
+                            console.log('Success! Loaded from:', path, 'Projects:', normalizedData.length);
                             success = true;
                             break;
+                        } else {
+                            console.warn('Fetched JSON has no project items:', path);
+                            lastError = 'JSON ว่างหรือโครงสร้างไม่ถูกต้อง';
                         }
                     } else {
                         console.warn(`Path ${path} returned status: ${response.status}`);
