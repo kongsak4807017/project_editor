@@ -976,33 +976,60 @@
 
         async function handleInitialLoad() {
             const saved = localStorage.getItem('editorProjects');
-            if (saved && JSON.parse(saved).length > 0) {
-                allProjects = JSON.parse(saved);
-                sourceProjects = JSON.parse(JSON.stringify(allProjects));
-                updateUI();
-                hideLoading();
-            } else {
-                await loadFromJSON();
+
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        allProjects = parsed;
+                        sourceProjects = JSON.parse(JSON.stringify(allProjects));
+                        updateUI();
+                        hideLoading();
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Invalid editorProjects in localStorage. Falling back to JSON.', error);
+                    localStorage.removeItem('editorProjects');
+                }
             }
+
+            await loadFromJSON();
         }
 
         async function loadFromJSON() {
             showLoading('กำลังดึงข้อมูลพื้นฐานจาก Server...');
-            
-            // ตรวจสอบ URL ปัจจุบันเพื่อช่วยเดา Path
+
             const currentPath = window.location.pathname;
-            const repoName = currentPath.split('/')[1] || '';
-            
-            const paths = [
+            const pathParts = currentPath.split('/').filter(Boolean);
+            const repoName = pathParts[0] || '';
+            const pageBasePath = currentPath.endsWith('/')
+                ? currentPath
+                : currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+
+            const candidates = [
                 'projects_complete.json',
                 './projects_complete.json',
+                '../projects_complete.json',
+                `${pageBasePath}projects_complete.json`,
                 `/${repoName}/projects_complete.json`,
+                '/projects_complete.json',
                 'project_editor/projects_complete.json',
                 './project_editor/projects_complete.json'
             ];
-            
+            const paths = [...new Set(candidates)]
+                .map(path => {
+                    try {
+                        return new URL(path, window.location.href).href;
+                    } catch (error) {
+                        console.warn('Invalid JSON path candidate:', path, error);
+                        return null;
+                    }
+                })
+                .filter(Boolean);
+
             console.log('Current URL Path:', currentPath);
             console.log('Detected Repo Name:', repoName);
+            console.log('JSON candidates:', paths);
 
             let success = false;
             let lastError = '';
@@ -1014,15 +1041,22 @@
                     
                     if (response.ok) {
                         const data = await response.json();
-                        if (Array.isArray(data) && data.length > 0) {
-                            allProjects = data;
+                        const normalizedData = Array.isArray(data)
+                            ? data
+                            : (Array.isArray(data?.projects) ? data.projects : []);
+
+                        if (normalizedData.length > 0) {
+                            allProjects = normalizedData;
                             sourceProjects = JSON.parse(JSON.stringify(allProjects));
                             updateUI();
                             hideLoading();
                             showNotification('โหลดข้อมูลสำเร็จจาก: ' + path, 'success');
-                            console.log('Success! Loaded from:', path);
+                            console.log('Success! Loaded from:', path, 'Projects:', normalizedData.length);
                             success = true;
                             break;
+                        } else {
+                            console.warn('Fetched JSON has no project items:', path);
+                            lastError = 'JSON ว่างหรือโครงสร้างไม่ถูกต้อง';
                         }
                     } else {
                         console.warn(`Path ${path} returned status: ${response.status}`);
