@@ -783,7 +783,8 @@
                 <button class="btn btn-secondary btn-sm" onclick="showGlobalProgression()">
                     <i class="fas fa-chart-bar"></i> ความคืบหน้า
                 </button>
-                <button class="btn btn-icon btn-sm" style="background:#f59e0b; color:white; border:none;" onclick="showGlobalLogsUI()">
+                <button class="btn btn-icon btn-sm" style="background:#f59e0b; color:white; border:none;"
+                    onclick="showGlobalLogsUI()">
                     <i class="fas fa-history"></i> ประวัติส่วนกลาง (Global Log)
                 </button>
                 <button class="btn btn-secondary btn-sm" onclick="exportWithHistory()">
@@ -960,20 +961,20 @@
             try {
                 const projectsRef = db.collection('projects');
                 const snapshot = await projectsRef.get();
-                
+
                 if (snapshot.empty) {
                     showLoading('กำลังเริ่มต้นฐานข้อมูลครั้งแรก (Seed Data)...');
                     const batch = db.batch();
-                    
+
                     embeddedProjectsData.forEach(p => {
                         const docRef = projectsRef.doc(p.id);
                         batch.set(docRef, p);
                     });
-                    
+
                     await batch.commit();
                     console.log("Seeded database with embeddedProjectsData");
                 }
-                
+
                 projectsRef.onSnapshot((snapshot) => {
                     snapshot.docChanges().forEach((change) => {
                         const data = change.doc.data();
@@ -989,18 +990,18 @@
                             allProjects = allProjects.filter(p => p.id !== data.id);
                         }
                     });
-                    
+
                     sourceProjects = [...allProjects];
                     filteredProjects = [...allProjects];
-                    
+
                     const sections = getUniqueSections();
                     filterState.sections.clear();
                     sections.forEach(s => filterState.sections.add(s));
-                    
+
                     updateStats();
                     renderFilters();
                     applyFilters();
-                    
+
                     if (selectedProject) {
                         const updatedSelected = allProjects.find(p => p.id === selectedProject.id);
                         if (updatedSelected && updatedSelected.lastModified !== selectedProject.lastModified) {
@@ -1011,7 +1012,7 @@
                     }
                     hideLoading();
                 });
-                
+
                 setupEventListeners();
                 showNotification('เชื่อมต่อ Real-time Sync แล้ว (Firebase)', 'success');
             } catch (error) {
@@ -1029,7 +1030,7 @@
                     <p style="font-size: 0.85em; color: #9ca3af;">กรุณานำเข้าไฟล์ projects_complete.json</p>
                 </div>
             `;
-            
+
             setupEventListeners();
 
             // Show import modal automatically
@@ -1651,6 +1652,33 @@
             // Update buttons
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
+
+            if (tabName === 'compare' && selectedProject) {
+                // Sync data from form to selectedProject before rendering comparison
+                selectedProject.before = {
+                    ...selectedProject.before,
+                    objective: document.getElementById('before-objective')?.value || '',
+                    target_group: document.getElementById('before-target')?.value || '',
+                    method: document.getElementById('before-method')?.value || '',
+                    indicators: document.getElementById('before-indicators')?.value || ''
+                };
+
+                let kpisData = document.getElementById('after-kpis')?.value || '';
+                selectedProject.after = {
+                    ...selectedProject.after,
+                    objective: document.getElementById('after-objective')?.value || '',
+                    target_group: document.getElementById('after-target')?.value || '',
+                    method: document.getElementById('after-method')?.value || '',
+                    innovation: document.getElementById('after-innovation')?.value || '',
+                    kpis: kpisData ? kpisData.split('\n').filter(k => k.trim()) : []
+                };
+
+                // Re-render the compare tab with the form's current values
+                const compareTab = document.getElementById('tab-compare');
+                if (compareTab) {
+                    compareTab.innerHTML = renderComparison(selectedProject);
+                }
+            }
 
             // Update content
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -2312,8 +2340,11 @@ ${userContext ? `\n=== Context เพิ่มเติมจากผู้ใ�
                 // อัปเดต UI
                 renderProjectList(); // อัปเดตสถานะใน sidebar
 
-                // NOTE: ไม่ต้อง re-render comparison view เพราะจะทำให้เกิด side effect
-                // ผู้ใช้สามารถกด switch tab ไปมาเพื่อดูข้อมูลใหม่ได้
+                // อัปเดตหน้าเปรียบเทียบ (Comparison Tab) ให้แสดงข้อมูลที่ AI เพิ่งสร้าง
+                const compareTab = document.getElementById('tab-compare');
+                if (compareTab) {
+                    compareTab.innerHTML = renderComparison(selectedProject);
+                }
             }
 
             // เติมลงฟอร์ม After ด้วย
