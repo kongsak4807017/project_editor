@@ -988,21 +988,38 @@
 
         async function loadFromJSON() {
             showLoading('กำลังดึงข้อมูลพื้นฐานจาก Server...');
-            
-            // ตรวจสอบ URL ปัจจุบันเพื่อช่วยเดา Path
+
             const currentPath = window.location.pathname;
-            const repoName = currentPath.split('/')[1] || '';
-            
-            const paths = [
+            const pathParts = currentPath.split('/').filter(Boolean);
+            const repoName = pathParts[0] || '';
+            const pageBasePath = currentPath.endsWith('/')
+                ? currentPath
+                : currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+
+            const candidates = [
                 'projects_complete.json',
                 './projects_complete.json',
+                '../projects_complete.json',
+                `${pageBasePath}projects_complete.json`,
                 `/${repoName}/projects_complete.json`,
+                '/projects_complete.json',
                 'project_editor/projects_complete.json',
                 './project_editor/projects_complete.json'
             ];
-            
+            const paths = [...new Set(candidates)]
+                .map(path => {
+                    try {
+                        return new URL(path, window.location.href).href;
+                    } catch (error) {
+                        console.warn('Invalid JSON path candidate:', path, error);
+                        return null;
+                    }
+                })
+                .filter(Boolean);
+
             console.log('Current URL Path:', currentPath);
             console.log('Detected Repo Name:', repoName);
+            console.log('JSON candidates:', paths);
 
             let success = false;
             let lastError = '';
