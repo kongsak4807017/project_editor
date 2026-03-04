@@ -987,38 +987,57 @@
         }
 
         async function loadFromJSON() {
-            showLoading('กำลังดึงข้อมูลจาก Server...');
-            // รองรับทุก Path ที่เป็นไปได้บน GitHub ของคุณ
+            showLoading('กำลังดึงข้อมูลพื้นฐานจาก Server...');
+            
+            // ตรวจสอบ URL ปัจจุบันเพื่อช่วยเดา Path
+            const currentPath = window.location.pathname;
+            const repoName = currentPath.split('/')[1] || '';
+            
             const paths = [
-                './projects_complete.json', 
                 'projects_complete.json',
-                './project_editor/projects_complete.json',
-                'project_editor/projects_complete.json'
+                './projects_complete.json',
+                `/${repoName}/projects_complete.json`,
+                'project_editor/projects_complete.json',
+                './project_editor/projects_complete.json'
             ];
             
+            console.log('Current URL Path:', currentPath);
+            console.log('Detected Repo Name:', repoName);
+
             let success = false;
+            let lastError = '';
+
             for (const path of paths) {
                 try {
-                    console.log('Fetching from:', path);
-                    const response = await fetch(path);
+                    console.log('Trying to fetch from:', path);
+                    const response = await fetch(path, { cache: 'no-store' }); // บังคับไม่ใช้ cache
+                    
                     if (response.ok) {
                         const data = await response.json();
-                        if (Array.isArray(data)) {
+                        if (Array.isArray(data) && data.length > 0) {
                             allProjects = data;
                             sourceProjects = JSON.parse(JSON.stringify(allProjects));
                             updateUI();
                             hideLoading();
-                            showNotification('โหลดข้อมูลพื้นฐานสำเร็จ', 'success');
+                            showNotification('โหลดข้อมูลสำเร็จจาก: ' + path, 'success');
+                            console.log('Success! Loaded from:', path);
                             success = true;
                             break;
                         }
+                    } else {
+                        console.warn(`Path ${path} returned status: ${response.status}`);
+                        lastError = `Status ${response.status}`;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.error(`Error fetching from ${path}:`, e.message);
+                    lastError = e.message;
+                }
             }
 
             if (!success) {
                 hideLoading();
-                showNotification('ไม่พบไฟล์ข้อมูลพื้นฐานบน GitHub', 'error');
+                alert(`⚠️ ไม่สามารถโหลดไฟล์ข้อมูลได้\n\nสาเหตุ: ${lastError}\n\nกรุณาตรวจสอบว่ามีไฟล์ projects_complete.json อยู่ใน GitHub หรือไม่?`);
+                showNotification('โหลดข้อมูลไม่สำเร็จ', 'error');
             }
         }
 
