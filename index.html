@@ -1662,8 +1662,11 @@
         // ============================================
         function switchTab(tabName) {
             // Update buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            const tabIndex = { 'before': 0, 'after': 1, 'compare': 2 };
+            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+                btn.classList.remove('active');
+                if (i === tabIndex[tabName]) btn.classList.add('active');
+            });
 
             if (tabName === 'compare' && selectedProject) {
                 // Sync data from form to selectedProject before rendering comparison
