@@ -1022,61 +1022,74 @@
                     console.warn('Migration from old projects collection skipped:', migrateErr.message);
                 }
 
-                projectsRef.onSnapshot((snapshot) => {
-                    snapshot.docChanges().forEach((change) => {
-                        const data = change.doc.data();
-                        const docId = change.doc.id; // ← ใช้ Document ID จาก Firestore (ไม่ใช่ field ภายใน)
-
-                        if (change.type === "added" || change.type === "modified") {
-                            // หาข้อมูลต้นฉบับจากอันที่ฝังไว้ในเครื่องเพื่อรับประกันว่าจะมีฟิลด์ name, type, section เสมอ
-                            const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
-                            // นำข้อมูลจาก Firebase มาวางทับข้อมูลต้นฉบับ + บังคับใส่ id
-                            const mergedData = { ...baseData, ...data, id: docId };
-
-                            const index = allProjects.findIndex(p => p.id === docId);
-                            if (index !== -1) {
-                                allProjects[index] = mergedData;
-                            } else {
-                                allProjects.push(mergedData);
-                            }
-                        }
-                        if (change.type === "removed") {
-                            allProjects = allProjects.filter(p => p.id !== docId);
-                        }
-                    });
-
-                    sourceProjects = [...allProjects];
-                    filteredProjects = [...allProjects];
-
-                    const sections = getUniqueSections();
-                    filterState.sections.clear();
-                    sections.forEach(s => filterState.sections.add(s));
-
-                    updateStats();
-                    renderFilters();
-                    applyFilters();
-
-                    if (selectedProject) {
-                        const updatedSelected = allProjects.find(p => p.id === selectedProject.id);
-                        if (updatedSelected && updatedSelected.lastModified !== selectedProject.lastModified) {
-                            selectedProject = updatedSelected;
-                            // Re-render the editor to show the new data the other person just saved
-                            const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-', '') || 'before';
-                            renderEditor();
-                            switchTab(activeTabId);
-                        }
-                    }
-                    hideLoading();
-                });
+                // === โหลดข้อมูลด้วย get() (แทน onSnapshot ที่ถูก block 404) ===
+                await loadProjectsFromFirebase(projectsRef);
 
                 setupEventListeners();
-                showNotification('เชื่อมต่อ Real-time Sync แล้ว (Firebase)', 'success');
+                showNotification('โหลดข้อมูลจาก Firebase สำเร็จ!', 'success');
             } catch (error) {
                 console.error('Firebase Error:', error);
                 hideLoading();
                 showNotification('เกิดข้อผิดพลาดในการเชื่อมต่อ Firebase', 'error');
             }
         }
+
+        // ฟังก์ชันโหลดข้อมูลจาก Firebase ด้วย get() (ไม่ใช้ onSnapshot ที่ถูก 404)
+        async function loadProjectsFromFirebase(projectsRef) {
+            const snapshot = await projectsRef.get();
+            allProjects = [];
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const docId = doc.id;
+                const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
+                const mergedData = { ...baseData, ...data, id: docId };
+                allProjects.push(mergedData);
+            });
+
+            // เพิ่มโครงการจาก embedded ที่ยังไม่มีใน Firebase
+            embeddedProjectsData.forEach(ep => {
+                if (!allProjects.find(p => p.id === ep.id)) {
+                    allProjects.push({ ...ep });
+                }
+            });
+
+            sourceProjects = [...allProjects];
+            filteredProjects = [...allProjects];
+
+            const sections = getUniqueSections();
+            filterState.sections.clear();
+            sections.forEach(s => filterState.sections.add(s));
+
+            updateStats();
+            renderFilters();
+            applyFilters();
+            hideLoading();
+            console.log(`Loaded ${allProjects.length} projects from Firebase (get mode)`);
+        }
+
+        // ฟังก์ชันรีเฟรชข้อมูล (เรียกหลังบันทึก หรือกดปุ่มรีเฟรช)
+        async function refreshFromFirebase() {
+            try {
+                showLoading('กำลังรีเฟรชข้อมูล...');
+                const projectsRef = db.collection('service_plan_projects');
+                await loadProjectsFromFirebase(projectsRef);
+
+                // อัปเดต selectedProject ถ้ามีอยู่
+                if (selectedProject) {
+                    const updated = allProjects.find(p => p.id === selectedProject.id);
+                    if (updated) {
+                        selectedProject = updated;
+                        renderEditor();
+                    }
+                }
+                showNotification('รีเฟรชข้อมูลสำเร็จ!', 'success');
+            } catch (err) {
+                console.error('Refresh error:', err);
+                showNotification('รีเฟรชล้มเหลว: ' + err.message, 'error');
+            }
+        }
+
 
         function showWelcomeScreen() {
             document.getElementById('projectList').innerHTML = `
@@ -1853,6 +1866,8 @@
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 showNotification('บันทึกและซิงค์ไปยัง Cloud สำเร็จ!', 'success');
+                // รีโหลดข้อมูลจาก Firebase เพื่อให้แน่ใจว่าแสดงข้อมูลล่าสุด
+                await refreshFromFirebase();
             } catch (err) {
                 console.error('Save to Firebase Error:', err);
                 showNotification('ข้อผิดพลาดการบันทึก: ' + err.message, 'error');
