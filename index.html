@@ -1032,25 +1032,45 @@
             }
         }
 
-        // ฟังก์ชันโหลดข้อมูลจาก Firebase ด้วย get() (ไม่ใช้ onSnapshot ที่ถูก 404)
-        async function loadProjectsFromFirebase(projectsRef) {
-            const snapshot = await projectsRef.get();
-            allProjects = [];
+        const CACHE_KEY = 'service_plan_projects_cache';
+        const CACHE_TIME_KEY = 'service_plan_projects_cache_time';
+        const CACHE_TTL = 10 * 60 * 1000; // Cache 10 นาที (ป้องกัน F5 รัวๆ)
 
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                const docId = doc.id;
-                const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
-                const mergedData = { ...baseData, ...data, id: docId };
-                allProjects.push(mergedData);
-            });
+        // ฟังก์ชันโหลดข้อมูลจาก Firebase ด้วย get() (พร้อมระบบ Cache 10 นาที)
+        async function loadProjectsFromFirebase(projectsRef, forceRefresh = false) {
+            const now = Date.now();
+            const cachedData = sessionStorage.getItem(CACHE_KEY);
+            const cachedTime = sessionStorage.getItem(CACHE_TIME_KEY);
 
-            // เพิ่มโครงการจาก embedded ที่ยังไม่มีใน Firebase
-            embeddedProjectsData.forEach(ep => {
-                if (!allProjects.find(p => p.id === ep.id)) {
-                    allProjects.push({ ...ep });
-                }
-            });
+            // ถ้าไม่ได้บังคับรีเฟรช และมี Cache ที่อายุไม่เกิน 10 นาที -> ใช้ Cache แทน ประหยัด Read มหาศาล!
+            if (!forceRefresh && cachedData && cachedTime && (now - parseInt(cachedTime) < CACHE_TTL)) {
+                allProjects = JSON.parse(cachedData);
+                console.log(`Loaded ${allProjects.length} projects from Local Cache (0 Reads!)`);
+            } else {
+                showLoading('กำลังดึงข้อมูลจาก Cloud...');
+                const snapshot = await projectsRef.get();
+                allProjects = [];
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const docId = doc.id;
+                    const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
+                    const mergedData = { ...baseData, ...data, id: docId };
+                    allProjects.push(mergedData);
+                });
+
+                // เพิ่มโครงการจาก embedded ที่ยังไม่มีใน Firebase
+                embeddedProjectsData.forEach(ep => {
+                    if (!allProjects.find(p => p.id === ep.id)) {
+                        allProjects.push({ ...ep });
+                    }
+                });
+
+                // บันทึกลง Cache
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(allProjects));
+                sessionStorage.setItem(CACHE_TIME_KEY, now.toString());
+                console.log(`Loaded ${allProjects.length} projects from Firebase (get mode) and Cached`);
+            }
 
             sourceProjects = [...allProjects];
             filteredProjects = [...allProjects];
@@ -1063,15 +1083,15 @@
             renderFilters();
             applyFilters();
             hideLoading();
-            console.log(`Loaded ${allProjects.length} projects from Firebase (get mode)`);
         }
 
-        // ฟังก์ชันรีเฟรชข้อมูล (เรียกหลังบันทึก หรือกดปุ่มรีเฟรช)
+        // ฟังก์ชันรีเฟรชข้อมูล (เรียกเมื่อผู้ใช้ตั้งใจกดปุ่มรีเฟรช ไอคอนหมุนๆ)
         async function refreshFromFirebase() {
             try {
                 showLoading('กำลังรีเฟรชข้อมูล...');
                 const projectsRef = db.collection('service_plan_projects');
-                await loadProjectsFromFirebase(projectsRef);
+                // ส่ง parameter forceRefresh = true เพื่อทะลุ Cache ไปดึงใหม่จาก Firebase
+                await loadProjectsFromFirebase(projectsRef, true);
 
                 // อัปเดต selectedProject ถ้ามีอยู่
                 if (selectedProject) {
@@ -1864,8 +1884,10 @@
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 showNotification('บันทึกและซิงค์ไปยัง Cloud สำเร็จ!', 'success');
-                // รีโหลดข้อมูลจาก Firebase เพื่อให้แน่ใจว่าแสดงข้อมูลล่าสุด
-                await refreshFromFirebase();
+                // อัปเดตข้อมูล Local & Cache ทันที โดยไม่ต้องโหลดข้อมูลจาก Firebase ใหม่ (ประหยัด 150 Reads ต่อการเซฟ 1 ครั้ง!)
+                sessionStorage.setItem('service_plan_projects_cache', JSON.stringify(allProjects));
+                sessionStorage.setItem('service_plan_projects_cache_time', Date.now().toString());
+                updateStats(); // อัปเดตตัวเลข Progress ด้านบน
             } catch (err) {
                 console.error('Save to Firebase Error:', err);
                 showNotification('ข้อผิดพลาดการบันทึก: ' + err.message, 'error');
