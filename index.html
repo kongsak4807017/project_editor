@@ -1016,8 +1016,10 @@
                         const updatedSelected = allProjects.find(p => p.id === selectedProject.id);
                         if (updatedSelected && updatedSelected.lastModified !== selectedProject.lastModified) {
                             selectedProject = updatedSelected;
-                            // Optionally re-render if it was open, but it could interrupt user. 
-                            // Let's keep it simple.
+                            // Re-render the editor to show the new data the other person just saved
+                            const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-', '') || 'before';
+                            renderEditor();
+                            switchTab(activeTabId);
                         }
                     }
                     hideLoading();
