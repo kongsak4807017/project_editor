@@ -945,8 +945,6 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        // แก้ปัญหา 404 WebChannel - บังคับใช้ Long Polling แทน gRPC-web
-        db.settings({ experimentalForceLongPolling: true, merge: true });
 
         document.addEventListener('DOMContentLoaded', function () {
             initFirebaseAndLoadData();
