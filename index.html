@@ -956,7 +956,7 @@
         async function initFirebaseAndLoadData() {
             showLoading('กำลังเชื่อมต่อฐานข้อมูล Firebase...');
             try {
-                const projectsRef = db.collection('projects');
+                const projectsRef = db.collection('service_plan_projects');
                 const snapshot = await projectsRef.get();
 
                 if (snapshot.empty) {
@@ -1780,9 +1780,9 @@
 
                 showNotification('กำลังบันทึกข้อมูลไปยังระบบ...', 'info');
 
-                await db.collection('projects').doc(selectedProject.id).set(sanitizedProject);
-                // Write to global_logs
-                await db.collection('global_logs').add({
+                await db.collection('service_plan_projects').doc(selectedProject.id).set(sanitizedProject);
+                // Write to activity_logs
+                await db.collection('activity_logs').add({
                     projectId: selectedProject.id,
                     projectName: selectedProject.name,
                     editor: editorName,
