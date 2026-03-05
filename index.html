@@ -980,6 +980,46 @@
                     console.log("Seeded missing projects into database");
                 }
 
+                // === Migration: ดึงข้อมูล after จาก collection 'projects' เก่า มา merge เข้า service_plan_projects ===
+                try {
+                    const oldProjectsSnapshot = await db.collection('projects').get();
+                    const migrateBatch = db.batch();
+                    let migrateCount = 0;
+
+                    oldProjectsSnapshot.forEach(doc => {
+                        const oldData = doc.data();
+                        const hasRealAfter = oldData.after && (
+                            (oldData.after.objective && oldData.after.objective.trim() !== '') ||
+                            (oldData.after.method && oldData.after.method.trim() !== '') ||
+                            (oldData.after.kpis && oldData.after.kpis.length > 0 && oldData.after.kpis.some(k => k && k.trim() !== ''))
+                        );
+
+                        if (hasRealAfter) {
+                            const targetDocRef = projectsRef.doc(doc.id);
+                            // Merge เฉพาะ field ที่สำคัญ ไม่เขียนทับทั้ง document
+                            const updateData = { after: oldData.after };
+                            if (oldData.lastModified) updateData.lastModified = oldData.lastModified;
+                            if (oldData.status && oldData.status !== 'draft') updateData.status = oldData.status;
+                            if (oldData.editHistory) updateData.editHistory = oldData.editHistory;
+                            if (oldData.lastEditedBy) updateData.lastEditedBy = oldData.lastEditedBy;
+                            if (oldData.aiContext) updateData.aiContext = oldData.aiContext;
+
+                            migrateBatch.update(targetDocRef, updateData);
+                            migrateCount++;
+                            console.log(`Migrating after data for ${doc.id}`);
+                        }
+                    });
+
+                    if (migrateCount > 0) {
+                        showLoading(`กำลังนำข้อมูล After จาก collection เก่ามา ${migrateCount} โครงการ...`);
+                        await migrateBatch.commit();
+                        console.log(`Migrated ${migrateCount} projects from 'projects' to 'service_plan_projects'`);
+                        showNotification(`นำเข้าข้อมูล After สำเร็จ ${migrateCount} โครงการ!`, 'success');
+                    }
+                } catch (migrateErr) {
+                    console.warn('Migration from old projects collection skipped:', migrateErr.message);
+                }
+
                 projectsRef.onSnapshot((snapshot) => {
                     snapshot.docChanges().forEach((change) => {
                         const data = change.doc.data();
