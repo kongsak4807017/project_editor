@@ -959,17 +959,25 @@
                 const projectsRef = db.collection('service_plan_projects');
                 const snapshot = await projectsRef.get();
 
-                if (snapshot.empty) {
-                    showLoading('กำลังเริ่มต้นฐานข้อมูลครั้งแรก (Seed Data)...');
-                    const batch = db.batch();
+                let existingIds = new Set();
+                snapshot.forEach(doc => existingIds.add(doc.id));
 
-                    embeddedProjectsData.forEach(p => {
+                const batch = db.batch();
+                let hasNewSeed = false;
+
+                // สร้างชุดข้อมูลที่ขาดหายไปใน Firebase (อิงตามไฟล์ที่ฝังไว้)
+                embeddedProjectsData.forEach(p => {
+                    if (!existingIds.has(p.id)) {
                         const docRef = projectsRef.doc(p.id);
                         batch.set(docRef, p);
-                    });
+                        hasNewSeed = true;
+                    }
+                });
 
+                if (hasNewSeed) {
+                    showLoading('กำลังเพิ่มรายชื่อโครงการที่ขาดหายไป (Seed Data)...');
                     await batch.commit();
-                    console.log("Seeded database with embeddedProjectsData");
+                    console.log("Seeded missing projects into database");
                 }
 
                 projectsRef.onSnapshot((snapshot) => {
