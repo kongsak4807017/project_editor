@@ -1685,7 +1685,7 @@
         // ============================================
         // SAVE FUNCTIONS
         // ============================================
-        function saveCurrentProject() {
+        async function saveCurrentProject() {
             if (!selectedProject) return;
 
             // ดึงชื่อผู้แก้ไข
@@ -1775,9 +1775,14 @@
 
             // Save to Firebase
             try {
-                db.collection('projects').doc(selectedProject.id).set(selectedProject);
+                // แปลงข้อมูลเพื่อหลีกเลี่ยงค่า undefined ที่ Firebase ไม่รองรับ
+                const sanitizedProject = JSON.parse(JSON.stringify(selectedProject));
+
+                showNotification('กำลังบันทึกข้อมูลไปยังระบบ...', 'info');
+
+                await db.collection('projects').doc(selectedProject.id).set(sanitizedProject);
                 // Write to global_logs
-                db.collection('global_logs').add({
+                await db.collection('global_logs').add({
                     projectId: selectedProject.id,
                     projectName: selectedProject.name,
                     editor: editorName,
@@ -1788,7 +1793,7 @@
                 showNotification('บันทึกและซิงค์ไปยัง Cloud สำเร็จ!', 'success');
             } catch (err) {
                 console.error('Save to Firebase Error:', err);
-                showNotification('ข้อผิดพลาดการเชื่อมต่อ', 'error');
+                showNotification('ข้อผิดพลาดการบันทึก: ' + err.message, 'error');
             }
             renderProjectList(); // Update status badges
         }
@@ -1960,7 +1965,7 @@
             }
         }
 
-// ============================================
+        // ============================================
         // EXPORT/IMPORT
         // ============================================
         function exportAllData() {
