@@ -1705,27 +1705,27 @@
             const oldBefore = { ...selectedProject.before };
             const oldAfter = { ...selectedProject.after };
 
-            if (activeTab === 'tab-before' || activeTab === 'tab-after') {
-                selectedProject.before = {
-                    objective: document.getElementById('before-objective')?.value || '',
-                    target_group: document.getElementById('before-target')?.value || '',
-                    method: document.getElementById('before-method')?.value || '',
-                    indicators: document.getElementById('before-indicators')?.value || ''
-                };
+            // All project data is in the DOM (under display: none if tab is inactive).
+            // We should always gather the latest data from the input fields.
+            selectedProject.before = {
+                objective: document.getElementById('before-objective')?.value || selectedProject.before?.objective || '',
+                target_group: document.getElementById('before-target')?.value || selectedProject.before?.target_group || '',
+                method: document.getElementById('before-method')?.value || selectedProject.before?.method || '',
+                indicators: document.getElementById('before-indicators')?.value || selectedProject.before?.indicators || ''
+            };
 
-                selectedProject.after = {
-                    objective: document.getElementById('after-objective')?.value || '',
-                    target_group: document.getElementById('after-target')?.value || '',
-                    method: document.getElementById('after-method')?.value || '',
-                    innovation: document.getElementById('after-innovation')?.value || '',
-                    kpis: document.getElementById('after-kpis')?.value?.split('\n').filter(k => k.trim()) || []
-                };
+            selectedProject.after = {
+                objective: document.getElementById('after-objective')?.value || selectedProject.after?.objective || '',
+                target_group: document.getElementById('after-target')?.value || selectedProject.after?.target_group || '',
+                method: document.getElementById('after-method')?.value || selectedProject.after?.method || '',
+                innovation: document.getElementById('after-innovation')?.value || selectedProject.after?.innovation || '',
+                kpis: document.getElementById('after-kpis')?.value?.split('\n').filter(k => k.trim()) || selectedProject.after?.kpis || []
+            };
 
-                // บันทึก AI Context
-                const contextInput = document.getElementById('ai-context-input');
-                if (contextInput) {
-                    selectedProject.aiContext = contextInput.value.trim();
-                }
+            // บันทึก AI Context
+            const contextInput = document.getElementById('ai-context-input');
+            if (contextInput) {
+                selectedProject.aiContext = contextInput.value.trim();
             }
 
             // บันทึกผู้แก้ไขปัจจุบัน
