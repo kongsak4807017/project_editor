@@ -984,11 +984,16 @@
                     snapshot.docChanges().forEach((change) => {
                         const data = change.doc.data();
                         if (change.type === "added" || change.type === "modified") {
+                            // หาข้อมูลต้นฉบับจากอันที่ฝังไว้ในเครื่องเพื่อรับประกันว่าจะมีฟิลด์ name, type, section เสมอ
+                            const baseData = embeddedProjectsData.find(ep => ep.id === data.id) || {};
+                            // นำข้อมูลจาก Firebase มาวางทับข้อมูลต้นฉบับ
+                            const mergedData = { ...baseData, ...data };
+
                             const index = allProjects.findIndex(p => p.id === data.id);
                             if (index !== -1) {
-                                allProjects[index] = data;
+                                allProjects[index] = mergedData;
                             } else {
-                                allProjects.push(data);
+                                allProjects.push(mergedData);
                             }
                         }
                         if (change.type === "removed") {
@@ -1097,10 +1102,10 @@
             listEl.innerHTML = filteredProjects.map(p => `
                 <div class="project-item ${selectedProject?.id === p.id ? 'active' : ''}" 
                      onclick="selectProject('${p.id}')">
-                    <div class="project-id">${p.id} | ${p.section}</div>
-                    <div class="project-name">${p.name}</div>
+                    <div class="project-id">${p.id} | ${p.section || 'ไม่มีหมวดหมู่'}</div>
+                    <div class="project-name">${p.name || '(ไม่มีชื่อโครงการ)'}</div>
                     <div class="project-meta">
-                        <span class="project-type ${p.type.toLowerCase()}">${p.type}</span>
+                        <span class="project-type ${(p.type || '').toLowerCase()}">${p.type || 'Unknown'}</span>
                         ${getStatusBadge(p)}
                     </div>
                 </div>
