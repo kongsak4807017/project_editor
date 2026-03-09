@@ -977,49 +977,6 @@
                     console.log("Seeded missing projects into database");
                 }
 
-                // === Migration: ดึงข้อมูล after จาก collection 'projects' เก่า มา merge เข้า service_plan_projects ===
-                // ปิดการทำงานส่วนนี้เพราะการ Migrate เสร็จสิ้นแล้ว การเปิดไว้จะทำให้ไปเขียนทับข้อมูลใหม่ที่ผู้ใช้เพิ่งบันทึกไป
-                /*
-                try {
-                    const oldProjectsSnapshot = await db.collection('projects').get();
-                    const migrateBatch = db.batch();
-                    let migrateCount = 0;
-
-                    oldProjectsSnapshot.forEach(doc => {
-                        const oldData = doc.data();
-                        const hasRealAfter = oldData.after && (
-                            (oldData.after.objective && oldData.after.objective.trim() !== '') ||
-                            (oldData.after.method && oldData.after.method.trim() !== '') ||
-                            (oldData.after.kpis && oldData.after.kpis.length > 0 && oldData.after.kpis.some(k => k && k.trim() !== ''))
-                        );
-
-                        if (hasRealAfter) {
-                            const targetDocRef = projectsRef.doc(doc.id);
-                            // Merge เฉพาะ field ที่สำคัญ ไม่เขียนทับทั้ง document
-                            const updateData = { after: oldData.after };
-                            if (oldData.lastModified) updateData.lastModified = oldData.lastModified;
-                            if (oldData.status && oldData.status !== 'draft') updateData.status = oldData.status;
-                            if (oldData.editHistory) updateData.editHistory = oldData.editHistory;
-                            if (oldData.lastEditedBy) updateData.lastEditedBy = oldData.lastEditedBy;
-                            if (oldData.aiContext) updateData.aiContext = oldData.aiContext;
-
-                            migrateBatch.update(targetDocRef, updateData);
-                            migrateCount++;
-                            console.log(\`Migrating after data for \${doc.id}\`);
-                        }
-                    });
-
-                    if (migrateCount > 0) {
-                        showLoading(\`กำลังนำข้อมูล After จาก collection เก่ามา \${migrateCount} โครงการ...\`);
-                        await migrateBatch.commit();
-                        console.log(\`Migrated \${migrateCount} projects from 'projects' to 'service_plan_projects'\`);
-                        showNotification(\`นำเข้าข้อมูล After สำเร็จ \${migrateCount} โครงการ!\`, 'success');
-                    }
-                } catch (migrateErr) {
-                    console.warn('Migration from old projects collection skipped:', migrateErr.message);
-                }
-                */
-
                 // === โหลดข้อมูลด้วย get() (แทน onSnapshot ที่ถูก block 404) ===
                 await loadProjectsFromFirebase(projectsRef);
 
@@ -1353,14 +1310,42 @@
             applyFilters();
         }
 
-        function selectProject(projectId) {
+        async function selectProject(projectId) {
             console.log('selectProject called:', projectId);
-            selectedProject = allProjects.find(p => p.id === projectId);
-            console.log('selectedProject changed to:', selectedProject?.id);
-            if (!selectedProject) return;
 
+            // 1. Render Optimistic UI ด้วยข้อมูลจาก Cache
+            const cachedProject = allProjects.find(p => p.id === projectId);
+            if (!cachedProject) return;
+
+            selectedProject = cachedProject;
             renderProjectList();
             renderEditor();
+
+            // 2. ดึงข้อมูลล่าสุดจาก Firebase เพื่อป้องกันการเขียนทับ (Race Condition)
+            try {
+                const docRef = db.collection('service_plan_projects').doc(projectId);
+                const docSnapshot = await docRef.get();
+
+                if (docSnapshot.exists) {
+                    const freshData = docSnapshot.data();
+                    const baseData = embeddedProjectsData.find(ep => ep.id === projectId) || {};
+
+                    // นำข้อมูลสดใหม่มาอัปเดต selectedProject
+                    selectedProject = { ...baseData, ...freshData, id: projectId };
+
+                    // อัปเดตตาราง All Projects ใน Memory ด้วย
+                    const index = allProjects.findIndex(p => p.id === projectId);
+                    if (index !== -1) {
+                        allProjects[index] = selectedProject;
+                    }
+
+                    // Render Editor อีกครั้ง (เพื่อแสดงข้อมูล After ที่คนอื่นอาจจะเพิ่งพิมพ์ไป)
+                    renderEditor();
+                }
+            } catch (error) {
+                console.error("Error fetching fresh project data:", error);
+                // ถ้าดึงไม่ได้ ให้ใช้ cache ตามเดิม
+            }
         }
 
         function renderEditor() {
@@ -1873,7 +1858,7 @@
 
                 showNotification('กำลังบันทึกข้อมูลไปยังระบบ...', 'info');
 
-                await db.collection('service_plan_projects').doc(selectedProject.id).set(sanitizedProject);
+                await db.collection('service_plan_projects').doc(selectedProject.id).set(sanitizedProject, { merge: true });
                 // Write to activity_logs
                 await db.collection('activity_logs').add({
                     projectId: selectedProject.id,
