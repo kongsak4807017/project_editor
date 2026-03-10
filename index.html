@@ -1013,6 +1013,9 @@
                     const docId = doc.id;
                     const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
                     const mergedData = { ...baseData, ...data, id: docId };
+                    // Deep merge: ป้องกัน embedded data ทับข้อมูลจริงใน nested objects
+                    if (data.before) mergedData.before = { ...data.before };
+                    if (data.after) mergedData.after = { ...data.after };
                     allProjects.push(mergedData);
                 });
 
@@ -1330,8 +1333,11 @@
                     const freshData = docSnapshot.data();
                     const baseData = embeddedProjectsData.find(ep => ep.id === projectId) || {};
 
-                    // นำข้อมูลสดใหม่มาอัปเดต selectedProject
-                    selectedProject = { ...baseData, ...freshData, id: projectId };
+                    // Deep merge: ให้ข้อมูลจาก Firebase ชนะ embedded data เสมอ (โดยเฉพาะ nested objects)
+                    const merged = { ...baseData, ...freshData, id: projectId };
+                    if (freshData.before) merged.before = { ...freshData.before };
+                    if (freshData.after) merged.after = { ...freshData.after };
+                    selectedProject = merged;
 
                     // อัปเดตตาราง All Projects ใน Memory ด้วย
                     const index = allProjects.findIndex(p => p.id === projectId);
@@ -1783,21 +1789,37 @@
             const oldBefore = { ...selectedProject.before };
             const oldAfter = { ...selectedProject.after };
 
+            // Helper: ดึงค่าจาก DOM อย่างปลอดภัย — ถ้า element มีอยู่ใช้ค่าจาก DOM เลย (แม้เป็น ""),
+            // ถ้า element ไม่มีใน DOM (เช่น tab ยังไม่ render) ให้ใช้ fallback จากข้อมูลเดิม
+            function getFieldValue(elementId, fallback) {
+                const el = document.getElementById(elementId);
+                if (el !== null) {
+                    return el.value; // ใช้ค่าจาก DOM ตรงๆ (แม้เป็น empty string ก็เก็บ empty string)
+                }
+                return fallback ?? ''; // element ไม่มีใน DOM → ใช้ fallback
+            }
+
             // All project data is in the DOM (under display: none if tab is inactive).
             // We should always gather the latest data from the input fields.
             selectedProject.before = {
-                objective: document.getElementById('before-objective')?.value || selectedProject.before?.objective || '',
-                target_group: document.getElementById('before-target')?.value || selectedProject.before?.target_group || '',
-                method: document.getElementById('before-method')?.value || selectedProject.before?.method || '',
-                indicators: document.getElementById('before-indicators')?.value || selectedProject.before?.indicators || ''
+                objective: getFieldValue('before-objective', selectedProject.before?.objective),
+                target_group: getFieldValue('before-target', selectedProject.before?.target_group),
+                method: getFieldValue('before-method', selectedProject.before?.method),
+                indicators: getFieldValue('before-indicators', selectedProject.before?.indicators)
             };
 
             selectedProject.after = {
-                objective: document.getElementById('after-objective')?.value || selectedProject.after?.objective || '',
-                target_group: document.getElementById('after-target')?.value || selectedProject.after?.target_group || '',
-                method: document.getElementById('after-method')?.value || selectedProject.after?.method || '',
-                innovation: document.getElementById('after-innovation')?.value || selectedProject.after?.innovation || '',
-                kpis: document.getElementById('after-kpis')?.value?.split('\n').filter(k => k.trim()) || selectedProject.after?.kpis || []
+                objective: getFieldValue('after-objective', selectedProject.after?.objective),
+                target_group: getFieldValue('after-target', selectedProject.after?.target_group),
+                method: getFieldValue('after-method', selectedProject.after?.method),
+                innovation: getFieldValue('after-innovation', selectedProject.after?.innovation),
+                kpis: (() => {
+                    const el = document.getElementById('after-kpis');
+                    if (el !== null) {
+                        return el.value.split('\n').filter(k => k.trim());
+                    }
+                    return selectedProject.after?.kpis ?? [];
+                })()
             };
 
             // บันทึก AI Context
