@@ -1025,20 +1025,12 @@
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     const docId = doc.id;
-                    const baseData = embeddedProjectsData.find(ep => ep.id === docId) || {};
-                    const mergedData = { ...baseData, ...data, id: docId };
-                    // Deep merge: ป้องกัน embedded data ทับข้อมูลจริงใน nested objects
-                    if (data.before) mergedData.before = { ...data.before };
-                    if (data.after) mergedData.after = { ...data.after };
-                    allProjects.push(mergedData);
+                    // Firebase = Source of Truth เดียว (ไม่ merge กับ embedded data อีกต่อไป)
+                    allProjects.push({ ...data, id: docId });
                 });
 
-                // เพิ่มโครงการจาก embedded ที่ยังไม่มีใน Firebase
-                embeddedProjectsData.forEach(ep => {
-                    if (!allProjects.find(p => p.id === ep.id)) {
-                        allProjects.push({ ...ep });
-                    }
-                });
+                // หมายเหตุ: โครงการที่ไม่มีใน Firebase จะถูก seed เข้าไปตอน initFirebaseAndLoadData
+                // ไม่ต้องเพิ่มจาก embedded data อีกแล้ว
 
                 // บันทึกลง Cache
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(allProjects));
@@ -1345,13 +1337,9 @@
 
                 if (docSnapshot.exists) {
                     const freshData = docSnapshot.data();
-                    const baseData = embeddedProjectsData.find(ep => ep.id === projectId) || {};
 
-                    // Deep merge: ให้ข้อมูลจาก Firebase ชนะ embedded data เสมอ (โดยเฉพาะ nested objects)
-                    const merged = { ...baseData, ...freshData, id: projectId };
-                    if (freshData.before) merged.before = { ...freshData.before };
-                    if (freshData.after) merged.after = { ...freshData.after };
-                    selectedProject = merged;
+                    // Firebase = Source of Truth เดียว (ไม่ merge กับ embedded data อีกต่อไป)
+                    selectedProject = { ...freshData, id: projectId };
 
                     // อัปเดตตาราง All Projects ใน Memory ด้วย
                     const index = allProjects.findIndex(p => p.id === projectId);
