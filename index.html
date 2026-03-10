@@ -954,42 +954,6 @@
             showLoading('กำลังเชื่อมต่อฐานข้อมูล Firebase...');
             try {
                 const projectsRef = db.collection('service_plan_projects');
-                const snapshot = await projectsRef.get();
-
-                let existingIds = new Set();
-                snapshot.forEach(doc => existingIds.add(doc.id));
-
-                const batch = db.batch();
-                let hasNewSeed = false;
-
-                // ตรวจสอบ ID ซ้ำใน embedded data (Safety Guard)
-                const embeddedIdSet = new Set();
-                const duplicateIds = [];
-                embeddedProjectsData.forEach(p => {
-                    if (!p.id || p.id.trim() === '' || embeddedIdSet.has(p.id)) {
-                        duplicateIds.push({ id: p.id || '(empty)', name: p.name?.substring(0, 50) });
-                    }
-                    embeddedIdSet.add(p.id);
-                });
-                if (duplicateIds.length > 0) {
-                    console.error('⚠️ Duplicate/Empty IDs found:', duplicateIds);
-                    showNotification(`พบ ${duplicateIds.length} โครงการที่ ID ซ้ำหรือว่าง! กรุณาแก้ไขก่อน deploy`, 'error');
-                }
-
-                // สร้างชุดข้อมูลที่ขาดหายไปใน Firebase (อิงตามไฟล์ที่ฝังไว้)
-                embeddedProjectsData.forEach(p => {
-                    if (!existingIds.has(p.id)) {
-                        const docRef = projectsRef.doc(p.id);
-                        batch.set(docRef, p);
-                        hasNewSeed = true;
-                    }
-                });
-
-                if (hasNewSeed) {
-                    showLoading('กำลังเพิ่มรายชื่อโครงการที่ขาดหายไป (Seed Data)...');
-                    await batch.commit();
-                    console.log("Seeded missing projects into database");
-                }
 
                 // === โหลดข้อมูลด้วย get() (แทน onSnapshot ที่ถูก block 404) ===
                 await loadProjectsFromFirebase(projectsRef);
@@ -1874,9 +1838,6 @@
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 showNotification('บันทึกและซิงค์ไปยัง Cloud สำเร็จ!', 'success');
-                // อัปเดตข้อมูล Local & Cache ทันที โดยไม่ต้องโหลดข้อมูลจาก Firebase ใหม่ (ประหยัด 150 Reads ต่อการเซฟ 1 ครั้ง!)
-                sessionStorage.setItem('service_plan_projects_cache', JSON.stringify(allProjects));
-                sessionStorage.setItem('service_plan_projects_cache_time', Date.now().toString());
                 updateStats(); // อัปเดตตัวเลข Progress ด้านบน
             } catch (err) {
                 console.error('Save to Firebase Error:', err);
